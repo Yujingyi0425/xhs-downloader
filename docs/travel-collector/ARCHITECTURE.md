@@ -2,26 +2,47 @@
 
 ## 现有边界
 
+### 编译/导入依赖方向
+
 ```text
-Extension page adapter
-        ↓ BrowserTask / capability HTTP
-apps/api composition root
-        ↓
-xhs-core application + domain ports/models
-        ↓
-xhs-adapters SQLite / HTTP / filesystem
-        ↓
-WebUI、CLI、MCP 通过各自 API/SDK 使用
+apps（api / cli / mcp）
+        ↓ import
+xhs-adapters
+        ↓ import
+xhs-core
 ```
 
-应用之间不直接导入。扩展共享稳定 TypeScript 契约；Python 领域模型与适配器边界使用 Pydantic/Protocol。
+`xhs-core` 定义 domain、application 和 ports/Protocols；`xhs-adapters` 依赖
+`xhs-core` 并实现这些 ports。`xhs-core` 不得 import `xhs-adapters`。各 app 之间也不得直接导入；扩展通过 `packages/xhs-contracts` 共享 TypeScript 契约。
+
+### 运行时调用与依赖注入方向
+
+```text
+apps/api composition root
+        ├─ 创建 xhs-adapters 实现
+        └─ 注入 xhs-core application service
+                    ↓ 调用 port
+             xhs-adapters 实现
+```
+
+扩展页面通过 BrowserTask/capability HTTP 调用 `apps/api`；API 的组合根负责组装适配器和核心应用服务。运行时调用方向可以表现为 API → core service → adapter，但这不改变上面的 compile/import 依赖方向。
 
 ## 建议新增边界
 
 ```text
-当前收藏页只读适配器
-  → CollectionSnapshot / CollectionItem
-  → CollectionRepository
+apps/extension 当前收藏页只读适配器
+        ↓ 协议/HTTP
+apps/api composition root
+        ↓ 注入
+xhs-core Collection/Detail application service
+        ↓ ports
+xhs-adapters CollectionRepository / SQLite / filesystem
+```
+
+核心应用服务内部的业务流程为：
+
+```text
+CollectionSnapshot / CollectionItem
   → DetailEnrichmentCoordinator
   → FeedDetail → WorkDetail/分析中间模型
   → 现有 DownloadTask / FileDownloader

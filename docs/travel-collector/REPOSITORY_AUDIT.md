@@ -8,7 +8,7 @@
 
 ### 1. 收藏夹页面能力应放在哪里？
 
-页面读取和虚拟列表累计属于 `apps/extension` 的页面适配/运行层；扩展服务调用和协议类型分别放在扩展 service 与 `packages/xhs-contracts`。收藏夹业务状态、持久化和后续编排不应放在页面脚本中，应进入 `xhs-core`，由 `apps/api` 组合并交给 `xhs-adapters` 实现。TC0 未发现现成收藏夹模块。
+页面读取和虚拟列表累计属于 `apps/extension` 的页面适配/运行层；扩展服务调用和协议类型分别放在扩展 service 与 `packages/xhs-contracts`。收藏夹业务状态、持久化和后续编排不应放在页面脚本中，应进入 `xhs-core`。`xhs-adapters` 依赖并实现 core 的 ports，`apps/api` 作为 composition root 创建这些 adapter implementation 并注入 core application service；`xhs-core` 不得反向 import `xhs-adapters`。TC0 未发现现成收藏夹模块。
 
 ### 2. Extension 如何执行 BrowserTask？
 
