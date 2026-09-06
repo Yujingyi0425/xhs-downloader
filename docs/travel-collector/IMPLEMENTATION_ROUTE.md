@@ -10,9 +10,14 @@
 
 输出真实源码审计、架构边界、需求基线、实现路线和测试策略。不得改运行时代码。
 
-### TC1 Collection Capture（TC1A/TC1B/TC1C 已完成；TC1D 进行中）
+### TC1 Collection Capture（TC1A/TC1B/TC1C/TC1D 已完成）
 
-阶段状态：`TC1A=PASS`、`TC1B=PASS`、`TC1C=PASS`、`TC1D=IN_PROGRESS`、`TC1D-R1=PASS`、`TC1D-RERUN=PENDING_HUMAN_AUTHORIZATION`。当前真实页面 Capture contract 为：board route 中存在 `feed_id` 与非空 `xsec_token`，同卡片必须有 matching `/explore/<FEED_ID>` alias；`xsec_source` 不再是必需条件，且不得借用 profile source。TC1D-R1 仅修复了该文档/运行时契约不匹配；新的真实 Japan 页面验收尚未重跑。TC2 未授权。
+阶段状态：`TC1A=PASS`、`TC1B=PASS`、`TC1C=PASS`、`TC1D=PASS`、`TC1D-R1=PASS`、`TC1D-RERUN-3=PASS`。当前真实页面 Capture contract 为：board route 中存在 `feed_id` 与非空 `xsec_token`，同卡片必须有 matching `/explore/<FEED_ID>` alias；`xsec_source` 不再是必需条件，且不得借用 profile source。TC1 已完成最终真实验收。TC2 仍未授权，且开始前必须先完成 Python/uv preflight。
+
+```text
+TC1=PASS
+TC2_AUTHORIZED=NO
+```
 
 ### TC2 Collection Persistence
 
