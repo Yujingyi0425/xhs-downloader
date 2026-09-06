@@ -1,11 +1,12 @@
-# TC1A：Final Evidence（R2 脱敏汇总）
+# TC1A：Final Evidence（R3 脱敏汇总）
 
 ## Gate 结论
 
 ```text
-PHASE=TC1A-FINAL-EVIDENCE
-STATUS=HOLD_USER_EVIDENCE_REQUIRED
+PHASE=TC1A
+STATUS=PASS
 REAL_PAGE_MEASURED=YES
+HUMAN_GATE=PASS
 ```
 
 ## 页面与链接事实
@@ -32,8 +33,11 @@ CUMULATIVE_MAP_REQUIRED=YES
 LAZY_LOAD_PRESENT=YES
 BOTTOM_DETECTION=CONFIRMED
 MEASURED_CUMULATIVE_NORMALIZED_UNIQUE_FEEDS=50
+STRICT_STRUCTURALLY_VALID_FEEDS=49
+VALID_BOARD_EXPLORE_ALIASES=49
+EXCLUDED_NON_FEED_CANDIDATES=1
 USER_VISIBLE_EXPECTED_COUNT=49（用户截图确认）
-COUNTS_EQUAL=NO
+COUNTS_EQUAL=YES_AFTER_STRICT_FILTER
 ```
 
 可见 normalized 数量从 31 下降到 11，而累计数量保持 50；本次测量过程中 `scrollHeight` 为 7352，底部连续 4 轮无新增且保持到底。推荐 TC1B 将滚动位置、scrollHeight、loading signal、累计 normalized 数量、连续无新增次数和最大轮数共同作为停止条件输入。
@@ -47,7 +51,7 @@ NOTE_TYPE_EXTRACTION=NOT_FOUND
 COVER_EXTRACTION=OPTIONAL
 ```
 
-这些只是脱敏结构信号，不是正式 selector，也不代表字段值可靠可读。
+这些只是脱敏结构信号，不是正式 selector，也不代表字段值可靠可读。结构实例计数不作为逻辑 feed 数量：同一逻辑 feed 可能有多个 DOM 实例。
 
 ## Token 重渲染事实
 
@@ -73,4 +77,22 @@ REAL_TITLE_OUTPUT=NO
 REAL_AUTHOR_OUTPUT=NO
 ```
 
-TC1A 不能 PASS：用户页面明确显示 49，但脱敏测量得到 50 个 normalized candidate，存在 1 个尚未定位的额外候选。不得忽略该差异、截断结果或把 50 强行视为真实收藏数。需要进一步的 measurement repair 才能定位该候选，当前不得进入 TC1B。
+R3 已定位额外候选：它位于重复 Feed 卡片簇之外，缺少 board/explore 路由、feed_id、非空 xsec_token/xsec_source、图片、标题和作者，仅含大量 profile 锚点，因此排除为非 feed。结构上有效的 board + explore alias 共 49 条，与页面可见收藏数一致。TC1A PASS，并授权进入 TC1B；不得据此进入 TC1C。
+
+## R3 冻结事实
+
+```text
+BOARD_ROUTE=/board/<BOARD_ID>/<FEED_ID>
+BOARD_ROUTE_XSEC_TOKEN=REQUIRED_NONEMPTY
+BOARD_ROUTE_XSEC_SOURCE=REQUIRED_NONEMPTY
+EXPLORE_ALIAS=/explore/<FEED_ID>
+BOARD_SECOND_ID_EQUALS_EXPLORE_ID=YES
+PROFILE_ROUTE_IS_FEED=NO
+EXCLUDED_OUTLIER_IS_FEED=NO
+STRUCTURAL_INSTANCE_COUNT_IS_LOGICAL_COUNT=NO
+TOKEN_REFRESH=LATEST_NONEMPTY_WINS
+EMPTY_TOKEN_OVERWRITE=NO
+VIRTUALIZATION=YES
+CAPTURE_ACCUMULATOR=Map<feed_id,item>
+TC1A_AUTHORIZED_NEXT=TC1B
+```

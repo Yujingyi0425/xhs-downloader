@@ -10,9 +10,9 @@
 
 输出真实源码审计、架构边界、需求基线、实现路线和测试策略。不得改运行时代码。
 
-### TC1 Collection Capture
+### TC1 Collection Capture（TC1A PASS；当前执行 TC1B）
 
-在 `apps/extension` 增加当前收藏夹只读捕获。先用真实页面测量 URL/DOM/状态；使用 `Map(feed_id)` 累计，处理虚拟列表回收、重复、异常和 token 刷新。输出合成 DOM 测试，不持久化、不取详情、不下载。
+TC1A 已通过人工 Gate：真实页面 `/board/<BOARD_ID>`、严格有效 feed 49 条、board + explore alias、非空 token/source、虚拟化和到底信号均已冻结。当前仅执行 TC1B：在 `apps/extension` 增加纯 TypeScript 捕获引擎，使用 `Map(feed_id)` 累计，处理虚拟列表回收、重复、异常和 token 刷新，输出滚动状态决策与合成 DOM 测试。不持久化、不取详情、不下载、不做真实 UI 集成。TC1C 未授权。
 
 ### TC2 Collection Persistence
 

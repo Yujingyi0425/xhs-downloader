@@ -1,16 +1,17 @@
 # TC1A：CollectionPageMeasurement Contract
 
-本契约只接受真实页面测量证据。R2 真实测量已确认页面结构，但 normalized 数量 50 与用户截图确认的 49 不相等；契约仍不能作为 TC1B 的完整输入。未确认字段继续保持 `UNKNOWN`，不得被 TC1B 当作事实硬编码。
+本契约只接受真实页面测量证据。R3 已完成 outlier repair：严格结构有效的 board + explore alias 数量为 49，与用户截图确认的页面数量一致。以下事实冻结为 TC1B 的输入；字段值仍不得写入仓库。
 
 ```text
 PAGE_DETECTION=FACT: /board/<ID> 页面形状已确认
 SCROLL_CONTAINER_STRATEGY=FACT: document.scrollingElement，实际 owner 为 HTML
 CARD_DISCOVERY_STRATEGY=FACT: 卡片级祖先内的 board/explore/profile 链接组合
-FEED_ID_EXTRACTION=FACT: board 第二个路径 ID 与 explore 路径 ID 在同卡片 hash 匹配
-XSEC_TOKEN_EXTRACTION=FACT: board route query 中存在 xsec_token
+FEED_ID_EXTRACTION=FACT: board 第二个路径 ID 与 explore 路径 ID 在同卡片严格匹配
+XSEC_TOKEN_EXTRACTION=FACT: board route query 中存在非空 xsec_token
+XSEC_SOURCE_EXTRACTION=FACT: board route query 中存在非空 xsec_source
 TITLE_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
 AUTHOR_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
-NOTE_TYPE_EXTRACTION=UNKNOWN: probe 未发现候选结构信号
+NOTE_TYPE_EXTRACTION=UNKNOWN: 不作为 feed 纳入条件
 COVER_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
 VIRTUALIZATION_MODEL=FACT: 可见 normalized 数量下降且累计数量保持增长，旧 DOM 卡片被移除
 LAZY_LOAD_MODEL=FACT: 测量过程中出现 loading signal；本次 scrollHeight 未增长
@@ -48,7 +49,7 @@ MEASURED_CUMULATIVE_UNIQUE_COUNT=50
 
 ## 冻结规则
 
-只有在脱敏真实页面证据确认页面身份、滚动容器、卡片发现、feed_id、token 存在性、虚拟化、lazy-load、结束信号以及用户可见数量相等后，才能提交 TC1A PASS。当前仍不冻结正式 selector，不实现 Capture Engine。
+只有在脱敏真实页面证据确认页面身份、滚动容器、卡片发现、feed_id、token 存在性、虚拟化、lazy-load、结束信号以及用户可见数量相等后，才能提交 TC1A PASS。R3 已满足该 Gate。TC1B 仍只实现纯函数 Capture Engine，不冻结脆弱 CSS selector，不接真实 UI。
 
 ## R2 证据汇总
 
@@ -59,6 +60,17 @@ CARD_LEVEL_LINK_SIGNATURE=CONFIRMED
 RAW_CANDIDATE_ANCHORS=90 → 30（随虚拟列表变化）
 NORMALIZED_VISIBLE_FEEDS=31 → 11
 CUMULATIVE_NORMALIZED_UNIQUE_FEEDS=50
+STRICT_STRUCTURALLY_VALID_FEEDS=49
 EXPECTED_COUNT_INPUT=49（用户截图确认）
-COUNTS_EQUAL=NO
+COUNTS_EQUAL=YES_AFTER_STRICT_FILTER
+
+## TC1A Gate
+
+```text
+PHASE=TC1A
+STATUS=PASS
+HUMAN_GATE=PASS
+TC1B_AUTHORIZED=YES
+TC1C_AUTHORIZED=NO
+```
 ```
