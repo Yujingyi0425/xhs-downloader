@@ -12,11 +12,11 @@ function pageWith(...cards: string[]): Document {
   return page;
 }
 
-function card(feedId: string, token = `token-${feedId}`, options: { explore?: string; source?: string; board?: string; title?: string; author?: string; cover?: boolean } = {}): string {
+function card(feedId: string, token = `token-${feedId}`, options: { explore?: string; source?: string; board?: string; cover?: boolean } = {}): string {
   const board = options.board ?? boardId;
   const explore = options.explore ?? feedId;
   const source = options.source ?? "pc_feed";
-  return `<article class="feed-card" data-title="${options.title ?? feedId}" data-author="author"><a href="/board/${board}/${feedId}?xsec_token=${token}&xsec_source=${source}">board</a><a href="/explore/${explore}">explore</a>${options.cover === false ? "" : "<img src='cover.jpg'>"}</article>`;
+  return `<article class="feed-card"><a href="/board/${board}/${feedId}?xsec_token=${token}&xsec_source=${source}">board</a><a href="/explore/${explore}">explore</a>${options.cover === false ? "" : "<img src='cover.jpg'>"}</article>`;
 }
 
 function candidate(feedId: string, token = `token-${feedId}`): CollectionFeedCandidate {
@@ -50,8 +50,8 @@ describe("TC1B collection capture engine", () => {
   it("A10 continues before bottom", () => expect(decideCollectionScroll(scroll())).toBe("continue"));
   it("A11 uses latest nonempty token", () => expect(mergeVisibleCollectionFeeds(createCollectionCaptureState(), [candidate("f1", "new")]).items.get("f1")?.xsecToken).toBe("new"));
   it("A12 never overwrites token with empty value", () => expect(mergeVisibleCollectionFeeds(mergeVisibleCollectionFeeds(createCollectionCaptureState(), [candidate("f1", "old")]), [{ ...candidate("f1"), xsecToken: "" }]).items.get("f1")?.xsecToken).toBe("old"));
-  it("A13 accepts missing title without metadata selectors", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { title: "" })), boardId)[0]).toEqual(candidate("f1", "t")));
-  it("A14 accepts missing author", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1").replace("data-author=\"author\"", "")), boardId)).toHaveLength(1));
+  it("A13 accepts missing title without metadata selectors", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t")), boardId)[0]).toEqual(candidate("f1", "t")));
+  it("A14 accepts missing author", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1")), boardId)).toHaveLength(1));
   it("A15 accepts missing cover", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { cover: false })), boardId)).toHaveLength(1));
   it("A16 does not require note type", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1")), boardId)[0].feedId).toBe("f1"));
   it("A17 excludes a different board", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { board: "other" })), boardId)).toEqual([]));
