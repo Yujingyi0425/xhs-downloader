@@ -1,0 +1,123 @@
+# TC1D：Real Japan Collection Acceptance
+
+本阶段只验证已经构建好的 Extension runtime 是否能在用户自己的已登录页面完成收藏夹扫描。扫描结果只保存在当前页面内存中，不会发送到 API，也不会写入本地服务。
+
+## 1. 加载已构建扩展
+
+1. 运行 Extension 的 production build。
+2. 打开 Chrome 或 Edge 的扩展管理页面。
+3. 开启“开发者模式”。
+4. 点击“加载已解压的扩展程序”。
+5. 选择仓库中的 `apps/extension/dist` 目录，不要选择源码目录。
+6. 确认 `xhs-downloader` 加载成功；如果之前已加载旧版本，先点击“重新加载”。
+7. 刷新小红书页面。
+
+## 2. 确认真实页面
+
+使用自己的账号正常登录小红书网页版，手动进入“我的收藏 → Japan”。确认当前地址形状为：
+
+```text
+https://www.xiaohongshu.com/board/<ID>
+```
+
+页面显示的收藏总数应为 49。这个数量只用于人工验收，不会传给扫描器，也不会控制扫描终止。
+
+## 3. Run 1：完整扫描与滚动恢复
+
+先手动滚到收藏列表中间附近。在 DevTools Console 只执行：
+
+```js
+document.scrollingElement?.scrollTop
+```
+
+记录返回值为 `RUN1_SCROLL_TOP_BEFORE`。
+
+点击浏览器工具栏中的 `xhs-downloader`。应出现“小红书旅行收藏夹”面板，但页面不应自动开始扫描。记录 `RUN1_AUTO_SCAN_BEFORE_CLICK=NO`。
+
+点击“扫描当前收藏夹”。扫描期间不要手动滚动、点击笔记、切换收藏夹或改变地址。成功时面板应显示：
+
+```text
+扫描完成，共发现 49 条唯一笔记
+```
+
+记录：
+
+```text
+RUN1_STATUS=SUCCESS
+RUN1_UNIQUE_COUNT=49
+```
+
+扫描结束后再次执行 `document.scrollingElement?.scrollTop`，记录为 `RUN1_SCROLL_TOP_AFTER`。如果回到原先区域，记录 `RUN1_SCROLL_RESTORE=PASS`。
+
+## 4. Run 2：重复性
+
+关闭面板，在同一个收藏夹页面重新打开扩展面板。确认初始状态为“尚未扫描”，再次点击“扫描当前收藏夹”。记录：
+
+```text
+RUN2_STATUS=SUCCESS
+RUN2_UNIQUE_COUNT=49
+REPEATABILITY=PASS
+```
+
+只有 Run 1 和 Run 2 都恰好为 49，才能记录 `REPEATABILITY=PASS`。
+
+## 5. Run 3：面板生命周期
+
+打开面板并点击“扫描当前收藏夹”。在扫描完成前关闭面板，立即重新打开面板并再次启动扫描。等待新扫描结束，不要操作页面。记录：
+
+```text
+LIFECYCLE_CLOSE_CANCEL=PASS
+LIFECYCLE_REOPEN_SCAN=PASS
+LIFECYCLE_OLD_SESSION_ISOLATION=PASS
+RUN3_UNIQUE_COUNT=49
+```
+
+确认旧扫描的结果没有改写新面板，新扫描没有出现明显并行争抢。
+
+## 6. 普通帖子回归
+
+进入任意普通 `/explore/<ID>` 页面，点击扩展按钮。不得出现收藏夹扫描面板，原有帖子下载面板应继续正常出现：
+
+```text
+NON_BOARD_COLLECTION_PANEL=NOT_OPENED
+EXISTING_DOWNLOAD_PANEL=PASS
+```
+
+## 7. 请勿提交敏感证据
+
+只回传以下脱敏结果：
+
+```text
+EXPECTED_COUNT=49
+RUN1_AUTO_SCAN_BEFORE_CLICK=NO
+RUN1_STATUS=
+RUN1_UNIQUE_COUNT=
+RUN1_SCROLL_TOP_BEFORE=
+RUN1_SCROLL_TOP_AFTER=
+RUN1_SCROLL_RESTORE=
+RUN2_STATUS=
+RUN2_UNIQUE_COUNT=
+REPEATABILITY=
+LIFECYCLE_CLOSE_CANCEL=
+LIFECYCLE_REOPEN_SCAN=
+LIFECYCLE_OLD_SESSION_ISOLATION=
+RUN3_UNIQUE_COUNT=
+NON_BOARD_COLLECTION_PANEL=
+EXISTING_DOWNLOAD_PANEL=
+```
+
+不要提供 Cookie、localStorage/sessionStorage、完整 href、Network headers、真实 token、真实 feed identity、DOM dump、真实标题或截图。
+
+如果失败，只需提供最终 UI 错误文字、最终数量、大致停止轮次和是否到底；不要先改代码、放宽超时、修改停止条件或截断数量。
+
+## 当前 checkpoint
+
+```text
+PHASE=TC1D
+STATUS=HOLD_USER_EVIDENCE_REQUIRED
+REAL_EXTENSION_LOADED=UNKNOWN
+REAL_BOARD_PAGE=UNKNOWN
+EXPECTED_COUNT=49
+NEXT_PHASE=TC1D-EVIDENCE
+NEXT_PHASE_AUTHORIZED=NO
+```
