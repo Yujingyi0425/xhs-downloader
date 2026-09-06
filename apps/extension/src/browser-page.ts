@@ -11,6 +11,16 @@ import {
 import { UncertainBrowserActionError } from "./browser-action-errors";
 import { buildPageCompatibilityDiagnostics } from "./browser-page-diagnostics";
 import { requestBrowserInteraction } from "./browser-interaction-input";
+import { CollectionCaptureController } from "./collection-controller";
+import { createCollectionPanel } from "./collection-panel";
+import { shouldOpenCollectionPanel } from "./collection-action-routing";
+
+const collectionPanel = createCollectionPanel(document, (onProgress) => new CollectionCaptureController({
+  page: document,
+  location,
+  scrollOwner: document.scrollingElement as unknown as { scrollTop: number; scrollHeight: number; clientHeight: number; scrollTo(options: { top: number }): void } | null,
+  onProgress,
+}));
 
 chrome.runtime.onMessage.addListener(
   (
@@ -18,6 +28,10 @@ chrome.runtime.onMessage.addListener(
     _sender,
     sendResponse: (response: BrowserPageTaskResponse | BrowserAccountProof) => void,
   ) => {
+    if (shouldOpenCollectionPanel(message.type, location.pathname)) {
+      collectionPanel.toggle();
+      return;
+    }
     if (isBrowserAccountChallengeRequest(message)) {
       void proveBrowserAccount(document, message.challenge)
         .then(sendResponse)
