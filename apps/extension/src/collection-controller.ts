@@ -99,12 +99,16 @@ export class CollectionCaptureController {
         const newUniqueCount = nextState.items.size - before;
         const owner = this.input.scrollOwner;
         const settled = await this.settle();
+        const geometryChanged = progress.previousScrollHeight !== null
+          && progress.previousScrollHeight !== owner.scrollHeight;
+        const relevantLoading = !settled && (newUniqueCount > 0 || geometryChanged);
         progress = advanceCollectionScrollProgress(progress, {
           scrollTop: owner.scrollTop,
           scrollHeight: owner.scrollHeight,
           clientHeight: owner.clientHeight,
           uniqueCount: nextState.items.size,
           loading: !settled,
+          relevantLoading,
         });
         this.input.onProgress?.(nextState.items.size, rounds);
         const decision = decideCollectionScroll({
@@ -119,6 +123,7 @@ export class CollectionCaptureController {
           maxRuntimeMs: this.options.maxRuntimeMs,
           requiredBottomStableRounds: REQUIRED_BOTTOM_STABLE_ROUNDS,
           progress,
+          relevantLoading,
         });
         state = nextState;
         if (decision === "done") return this.result("success", context.boardId, state, rounds, startedAt, "bottom_stable");
