@@ -22,9 +22,10 @@ export function detectCollectionPage(pathname: string): CollectionPageContext {
 export function parseCollectionRoute(href: string): CollectionRoute {
   try {
     const url = new URL(href, "https://www.xiaohongshu.com");
+    if (url.origin !== "https://www.xiaohongshu.com") return otherRoute();
     const parts = url.pathname.split("/").filter(Boolean);
     const kind = parts[0];
-    if (kind === "board" && parts[1] && parts[2]) {
+    if (kind === "board" && parts.length === 3 && parts[1] && parts[2]) {
       return {
         kind: "board",
         boardId: parts[1],
@@ -33,15 +34,18 @@ export function parseCollectionRoute(href: string): CollectionRoute {
         xsecSource: url.searchParams.get("xsec_source")?.trim() ?? "",
       };
     }
-    if (kind === "explore" && parts[1]) {
+    if (kind === "explore" && parts.length === 2 && parts[1]) {
       return { kind: "explore", boardId: null, feedId: parts[1], xsecToken: "", xsecSource: "" };
     }
-    if (kind === "user" && parts[1] === "profile" && parts[2]) {
+    if (kind === "user" && parts.length === 3 && parts[1] === "profile" && parts[2]) {
       return { kind: "profile", boardId: null, feedId: null, xsecToken: "", xsecSource: "" };
     }
   } catch {
     // Invalid hrefs are simply non-candidates.
   }
-  return { kind: "other", boardId: null, feedId: null, xsecToken: "", xsecSource: "" };
+  return otherRoute();
 }
 
+function otherRoute(): CollectionRoute {
+  return { kind: "other", boardId: null, feedId: null, xsecToken: "", xsecSource: "" };
+}

@@ -14,8 +14,8 @@ AUTHOR_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
 NOTE_TYPE_EXTRACTION=UNKNOWN: 不作为 feed 纳入条件
 COVER_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
 VIRTUALIZATION_MODEL=FACT: 可见 normalized 数量下降且累计数量保持增长，旧 DOM 卡片被移除
-LAZY_LOAD_MODEL=FACT: 测量过程中出现 loading signal；本次 scrollHeight 未增长
-STOP_CONDITION_MODEL=FACT_INPUT: 到底后连续 4 轮无新增、scrollHeight 不增长且仍在底部
+LAZY_LOAD_MODEL=FACT: 滚动期间 scrollHeight 可以增长，新增 Feed 会继续出现；到底稳定判断必须等待 scrollHeight 不再增长
+STOP_CONDITION_MODEL=FACT_INPUT: 到底后连续 4 轮无新增、scrollTop 与 scrollHeight 均稳定、loading=false 且仍在底部
 TOKEN_REFRESH_POLICY_INPUT=FACT_INPUT: 同 feed 重渲染时保留最新非空 token
 ```
 

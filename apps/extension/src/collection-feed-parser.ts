@@ -37,7 +37,6 @@ function findCardRoot(anchor: Element, boardId: string): Element | null {
     const routes = Array.from(current.querySelectorAll("a[href]")).map((item) =>
       parseCollectionRoute(item.getAttribute("href") ?? ""),
     );
-    if (routes.length > 16) continue;
     const board = routes.find((route) => route.kind === "board" && route.boardId === boardId);
     if (board?.feedId && routes.some((route) => route.kind === "explore" && route.feedId === board.feedId)) {
       return current;
@@ -56,20 +55,9 @@ function parseCard(root: Element, boardId: string): CollectionFeedCandidate | nu
   if (!board?.feedId) return null;
   const hasMatchingExplore = routes.some((route) => route.kind === "explore" && route.feedId === board.feedId);
   if (!hasMatchingExplore) return null;
-  const element = root as HTMLElement;
-  const title = readAttributeOrText(element, "data-title", "[data-testid='title']");
-  const author = readAttributeOrText(element, "data-author", "[data-testid='author']");
-  const image = root.querySelector("img[src]")?.getAttribute("src")?.trim();
   return {
     feedId: board.feedId,
     xsecToken: board.xsecToken,
     xsecSource: board.xsecSource,
-    ...(title ? { title } : {}),
-    ...(author ? { author } : {}),
-    ...(image ? { coverUrl: image } : {}),
   };
-}
-
-function readAttributeOrText(root: HTMLElement, attribute: string, selector: string): string {
-  return root.getAttribute(attribute)?.trim() || root.querySelector(selector)?.textContent?.trim() || "";
 }
