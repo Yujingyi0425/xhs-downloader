@@ -32,8 +32,8 @@ CUMULATIVE_MAP_REQUIRED=YES
 LAZY_LOAD_PRESENT=YES
 BOTTOM_DETECTION=CONFIRMED
 MEASURED_CUMULATIVE_NORMALIZED_UNIQUE_FEEDS=50
-USER_VISIBLE_EXPECTED_COUNT=UNKNOWN
-COUNTS_EQUAL=UNKNOWN
+USER_VISIBLE_EXPECTED_COUNT=49（用户截图确认）
+COUNTS_EQUAL=NO
 ```
 
 可见 normalized 数量从 31 下降到 11，而累计数量保持 50；本次测量过程中 `scrollHeight` 为 7352，底部连续 4 轮无新增且保持到底。推荐 TC1B 将滚动位置、scrollHeight、loading signal、累计 normalized 数量、连续无新增次数和最大轮数共同作为停止条件输入。
@@ -73,4 +73,4 @@ REAL_TITLE_OUTPUT=NO
 REAL_AUTHOR_OUTPUT=NO
 ```
 
-TC1A 不能 PASS 的唯一 Gate 缺口是 `USER_VISIBLE_EXPECTED_COUNT` 未提供，因此无法证明 50 等于当前收藏夹总数。不得把历史参考值 49 自动当作当前真值。收到用户明确填写的当前页面总数后，才能进行最终数量 Gate 判断。
+TC1A 不能 PASS：用户页面明确显示 49，但脱敏测量得到 50 个 normalized candidate，存在 1 个尚未定位的额外候选。不得忽略该差异、截断结果或把 50 强行视为真实收藏数。需要进一步的 measurement repair 才能定位该候选，当前不得进入 TC1B。
