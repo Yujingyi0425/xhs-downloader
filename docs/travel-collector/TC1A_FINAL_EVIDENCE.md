@@ -59,7 +59,9 @@ COVER_EXTRACTION=OPTIONAL
 XSEC_TOKEN_PRESENCE=CONFIRMED
 TOKEN_PRESENT_AFTER_RERENDER=YES
 TOKEN_LENGTH_CHANGED=YES
-XSEC_SOURCE_INITIAL_ASSUMPTION=SUPERSEDED_BY_TC1D_REAL_PAGE
+HISTORICAL_TC1A_XSEC_SOURCE_ASSUMPTION=REQUIRED_NONEMPTY
+CURRENT_RUNTIME_XSEC_SOURCE_REQUIRED=NO
+SUPERSEDED_BY=TC1D_REAL_PAGE_EVIDENCE
 ```
 
 后续设计输入：同一 normalized feed 再次出现时，应使用最新非空 token 覆盖旧上下文；真实 token 值未输出、未提交。
@@ -78,14 +80,14 @@ REAL_TITLE_OUTPUT=NO
 REAL_AUTHOR_OUTPUT=NO
 ```
 
-R3 已定位额外候选：它位于重复 Feed 卡片簇之外，缺少 board/explore 路由、feed_id、非空 xsec_token/xsec_source、图片、标题和作者，仅含大量 profile 锚点，因此排除为非 feed。结构上有效的 board + explore alias 共 49 条，与页面可见收藏数一致。TC1A PASS，并授权进入 TC1B；不得据此进入 TC1C。
+历史 R3 证据已定位额外候选：它位于重复 Feed 卡片簇之外，缺少 board/explore 路由、feed_id、非空 xsec_token/xsec_source、图片、标题和作者，仅含大量 profile 锚点，因此排除为非 feed。结构上有效的 board + explore alias 共 49 条，与页面可见收藏数一致。TC1A PASS，并授权进入 TC1B；不得据此进入 TC1C。该段属于 HISTORICAL_TC1A_OBSERVATION，当前运行时契约以后文 supersession 为准。
 
 ## R3 冻结事实
 
 ```text
 BOARD_ROUTE=/board/<BOARD_ID>/<FEED_ID>
 BOARD_ROUTE_XSEC_TOKEN=REQUIRED_NONEMPTY
-BOARD_ROUTE_XSEC_SOURCE=REQUIRED_NONEMPTY
+HISTORICAL_TC1A_BOARD_ROUTE_XSEC_SOURCE=REQUIRED_NONEMPTY
 EXPLORE_ALIAS=/explore/<FEED_ID>
 BOARD_SECOND_ID_EQUALS_EXPLORE_ID=YES
 PROFILE_ROUTE_IS_FEED=NO
@@ -96,4 +98,15 @@ EMPTY_TOKEN_OVERWRITE=NO
 VIRTUALIZATION=YES
 CAPTURE_ACCUMULATOR=Map<feed_id,item>
 TC1A_AUTHORIZED_NEXT=TC1B
+```
+
+## Current Runtime Contract Supersession
+
+TC1A 的上述 `xsec_source` 是历史测量假设，不修改历史记录。TC1D 当前真实页面证据显示 board route 60/60 携带 token、0/60 携带 source；因此当前有效运行时契约为：
+
+```text
+CURRENT_RUNTIME_XSEC_SOURCE_REQUIRED=NO
+SUPERSEDED_BY=TC1D_REAL_PAGE_EVIDENCE
+CURRENT_RUNTIME_FEED_CONTRACT=feed_id + xsec_token + matching explore alias
+PROFILE_SOURCE_BORROWING=NO
 ```
