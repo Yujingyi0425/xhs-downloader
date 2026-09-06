@@ -53,8 +53,9 @@ export function decideCollectionScroll(input: CollectionScrollInput): Collection
   if (input.round >= input.maxRounds) return "abort_max_rounds";
   if (input.elapsedMs >= input.maxRuntimeMs) return "abort_timeout";
   const atBottom = input.scrollTop + input.clientHeight >= input.scrollHeight - 1;
+  if (!atBottom) return "continue";
   if (input.loading) return "wait";
   if (atBottom && input.newUniqueCount === 0 && input.progress.bottomStableRounds >= input.requiredBottomStableRounds) return "done";
   if (atBottom) return "wait";
-  return "continue";
+  return "wait";
 }

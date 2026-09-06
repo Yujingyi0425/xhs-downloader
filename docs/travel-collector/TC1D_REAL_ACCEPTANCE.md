@@ -136,6 +136,22 @@ EXPECTED_COUNT=49
 TC1D_R1_REPAIR_REQUIRED=YES
 ```
 
+## Historical Failure Evidence（TC1D-R2 修复前）
+
+真实重跑曾观察到当前页面显示数量为 50，但扫描累计数量停在 39，且扫描长期停留在页面顶部：
+
+```text
+CURRENT_EXPECTED_COUNT=50
+RUN1_UNIQUE_COUNT=39
+SCROLL_TOP=0
+SCROLL_HEIGHT=8504
+CLIENT_HEIGHT=984
+AT_BOTTOM=NO
+ROOT_CAUSE=NON_BOTTOM_LOADING_WAIT_DEADLOCK
+```
+
+该记录属于修复前历史证据；`CURRENT_EXPECTED_COUNT` 只用于人工验收比较，不进入生产终止逻辑。
+
 ## Current Checkpoint
 
 ```text

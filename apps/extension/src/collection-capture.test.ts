@@ -125,4 +125,9 @@ describe("TC1B collection capture engine", () => {
     const first = mergeVisibleCollectionFeeds(createCollectionCaptureState(), [candidate("f1", "A")]);
     expect(mergeVisibleCollectionFeeds(first, [{ ...candidate("f1"), xsecToken: "" }]).items.get("f1")?.xsecToken).toBe("A");
   });
+  it("R2-01 continues when non-bottom and loading", () => expect(decideCollectionScroll(scroll({ loading: true }))).toBe("continue"));
+  it("R2-02 continues when non-bottom and settled", () => expect(decideCollectionScroll(scroll({ loading: false }))).toBe("continue"));
+  it("R2-03 waits when bottom and loading", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, loading: true }))).toBe("wait"));
+  it("R2-04 waits at bottom when new items arrived", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 1 }))).toBe("wait"));
+  it("R2-05 finishes only at stable bottom", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 0, progress: stableProgress(3) }))).toBe("done"));
 });

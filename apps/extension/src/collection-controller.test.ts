@@ -114,4 +114,33 @@ describe("TC1C collection runtime integration", () => {
     await controller.start();
     expect(await controller.start()).toMatchObject({ status: "success" });
   });
+  it("R2-06 keeps scrolling during continuous unsettled non-bottom rounds", async () => {
+    const scrollOwner = owner();
+    scrollOwner.scrollHeight = 2_000;
+    const result = await new CollectionCaptureController({ page: pageWith(1), location: { pathname: `/board/${board}` }, scrollOwner, settle: async () => false, maxRounds: 4 }).start();
+    expect(result.stopReason).toBe("max_rounds");
+    expect(scrollOwner.calls.filter((top) => top > 0).length).toBeGreaterThan(0);
+  });
+  it("R2-07 can accumulate lazy-loaded feeds without expected count", async () => {
+    const page = pageWith(39);
+    const scrollOwner = owner();
+    scrollOwner.scrollHeight = 2_000;
+    let settleCalls = 0;
+    const result = await new CollectionCaptureController({ page, location: { pathname: `/board/${board}` }, scrollOwner, settle: async () => {
+      settleCalls += 1;
+      if (settleCalls === 3) page.body.insertAdjacentHTML("beforeend", Array.from({ length: 11 }, (_, i) => `<article><a href='/board/${board}/new${i}?xsec_token=tnew${i}'>b</a><a href='/explore/new${i}'>e</a></article>`).join(""));
+      return settleCalls > 3;
+    }, maxRounds: 20 }).start();
+    expect(result.uniqueCount).toBe(50);
+  });
+  it("R2-08 continuous mutation does not deadlock before bottom", async () => {
+    const scrollOwner = owner(); scrollOwner.scrollHeight = 2_000;
+    const result = await new CollectionCaptureController({ page: pageWith(1), location: { pathname: `/board/${board}` }, scrollOwner, settle: async () => false, maxRounds: 2 }).start();
+    expect(scrollOwner.calls.some((top) => top > 0)).toBe(true);
+    expect(result.stopReason).toBe("max_rounds");
+  });
+  it("R2-09 mutation at bottom cannot finish", async () => expect((await scan({ settle: async () => false, maxRounds: 2 })).result.stopReason).toBe("max_rounds"));
+  it("R2-10 settled bottom converges to done", async () => expect((await scan()).result.stopReason).toBe("bottom_stable"));
+  it("R2-11 still aborts by runtime", async () => expect((await scan({ maxRuntimeMs: 0 })).result.stopReason).toBe("timeout"));
+  it("R2-12 still aborts by rounds", async () => expect((await scan({ maxRounds: 1 })).result.stopReason).toBe("max_rounds"));
 });
