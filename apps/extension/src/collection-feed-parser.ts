@@ -4,7 +4,6 @@ import { parseCollectionRoute } from "./collection-page-detection";
 export interface CollectionFeedCandidate {
   feedId: string;
   xsecToken: string;
-  xsecSource: string;
   title?: string;
   author?: string;
   coverUrl?: string;
@@ -50,7 +49,7 @@ function parseCard(root: Element, boardId: string): CollectionFeedCandidate | nu
     parseCollectionRoute(item.getAttribute("href") ?? ""),
   );
   const board = routes.find(
-    (route) => route.kind === "board" && route.boardId === boardId && route.feedId && route.xsecToken && route.xsecSource,
+    (route) => route.kind === "board" && route.boardId === boardId && route.feedId && route.xsecToken,
   );
   if (!board?.feedId) return null;
   const hasMatchingExplore = routes.some((route) => route.kind === "explore" && route.feedId === board.feedId);
@@ -58,6 +57,5 @@ function parseCard(root: Element, boardId: string): CollectionFeedCandidate | nu
   return {
     feedId: board.feedId,
     xsecToken: board.xsecToken,
-    xsecSource: board.xsecSource,
   };
 }

@@ -8,7 +8,7 @@ SCROLL_CONTAINER_STRATEGY=FACT: document.scrollingElement，实际 owner 为 HTM
 CARD_DISCOVERY_STRATEGY=FACT: 卡片级祖先内的 board/explore/profile 链接组合
 FEED_ID_EXTRACTION=FACT: board 第二个路径 ID 与 explore 路径 ID 在同卡片严格匹配
 XSEC_TOKEN_EXTRACTION=FACT: board route query 中存在非空 xsec_token
-XSEC_SOURCE_EXTRACTION=FACT: board route query 中存在非空 xsec_source
+XSEC_SOURCE_EXTRACTION=SUPERSEDED: TC1D 当前真实页面 board route 不携带 xsec_source；不作为 Capture inclusion 条件
 TITLE_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
 AUTHOR_EXTRACTION=OPTIONAL: 仅发现候选结构信号，未确认稳定来源
 NOTE_TYPE_EXTRACTION=UNKNOWN: 不作为 feed 纳入条件
@@ -49,7 +49,7 @@ MEASURED_CUMULATIVE_UNIQUE_COUNT=50
 
 ## 冻结规则
 
-只有在脱敏真实页面证据确认页面身份、滚动容器、卡片发现、feed_id、token 存在性、虚拟化、lazy-load、结束信号以及用户可见数量相等后，才能提交 TC1A PASS。R3 已满足该 Gate。TC1B 仍只实现纯函数 Capture Engine，不冻结脆弱 CSS selector，不接真实 UI。
+只有在脱敏真实页面证据确认页面身份、滚动容器、卡片发现、feed_id、token 存在性、虚拟化、lazy-load、结束信号以及用户可见数量相等后，才能提交 TC1A PASS。R3 已满足该 Gate。TC1B 仍只实现纯函数 Capture Engine，不冻结脆弱 CSS selector，不接真实 UI。TC1D-R1 的当前运行时证据 supersede 初始对 xsec_source 的假设：有效条件为 feed_id + 非空 xsec_token + matching explore alias。
 
 ## R2 证据汇总
 
@@ -63,6 +63,20 @@ CUMULATIVE_NORMALIZED_UNIQUE_FEEDS=50
 STRICT_STRUCTURALLY_VALID_FEEDS=49
 EXPECTED_COUNT_INPUT=49（用户截图确认）
 COUNTS_EQUAL=YES_AFTER_STRICT_FILTER
+
+## TC1D 当前运行时契约覆盖
+
+TC1A 初始测量曾将 board route 的 `xsec_source` 记录为推断事实；TC1D 真实页面脱敏测量显示 board route 为 `BOARD_WITH_TOKEN=60/60`、`BOARD_WITH_SOURCE=0/60`，且 board/explore intersection 为 30/30。因此当前有效契约覆盖初始假设：
+
+```text
+CURRENT_BOARD_ROUTE_REQUIRED=YES
+FEED_ID_REQUIRED=YES
+XSEC_TOKEN_REQUIRED_NONEMPTY=YES
+XSEC_SOURCE_REQUIRED=NO
+MATCHING_EXPLORE_ALIAS_REQUIRED=YES
+PROFILE_SOURCE_BORROWING=NO
+XSEC_SOURCE_NOT_REQUIRED_BY_DOWNSTREAM=CONFIRMED
+```
 
 ## TC1A Gate
 

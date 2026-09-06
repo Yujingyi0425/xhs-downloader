@@ -9,7 +9,7 @@ export function createCollectionCaptureState(): CollectionCaptureState {
   return { items: new Map() };
 }
 
-/** 合并当前可见候选；同一 feed 只保留一条，最新非空 token/source 优先。 */
+/** 合并当前可见候选；同一 feed 只保留一条，最新非空 token 优先。 */
 export function mergeVisibleCollectionFeeds(
   previous: CollectionCaptureState,
   visible: readonly CollectionFeedCandidate[],
@@ -25,7 +25,6 @@ export function mergeVisibleCollectionFeeds(
       ...old,
       ...candidate,
       xsecToken: candidate.xsecToken || old.xsecToken,
-      xsecSource: candidate.xsecSource || old.xsecSource,
       title: candidate.title || old.title,
       author: candidate.author || old.author,
       coverUrl: candidate.coverUrl || old.coverUrl,
@@ -33,4 +32,3 @@ export function mergeVisibleCollectionFeeds(
   }
   return { items };
 }
-

@@ -7,7 +7,7 @@ const board = "board-a";
 
 function pageWith(count: number, boardId = board): Document {
   const page = document.implementation.createHTMLDocument();
-  page.body.innerHTML = Array.from({ length: count }, (_, i) => `<article><a href='/board/${boardId}/f${i}?xsec_token=t${i}&xsec_source=pc_feed'>b</a><a href='/explore/f${i}'>e</a></article>`).join("");
+  page.body.innerHTML = Array.from({ length: count }, (_, i) => `<article><a href='/board/${boardId}/f${i}?xsec_token=t${i}'>b</a><a href='/explore/f${i}'>e</a></article>`).join("");
   return page;
 }
 
@@ -56,7 +56,7 @@ describe("TC1C collection runtime integration", () => {
   });
   it("C10 preserves cumulative results across virtualized rounds", () => {
     let state = createCollectionCaptureState();
-    for (const count of [31, 31, 26, 21, 15, 6]) state = mergeVisibleCollectionFeeds(state, Array.from({ length: count }, (_, i) => ({ feedId: `f${i}`, xsecToken: `t${i}`, xsecSource: "pc_feed" })));
+    for (const count of [31, 31, 26, 21, 15, 6]) state = mergeVisibleCollectionFeeds(state, Array.from({ length: count }, (_, i) => ({ feedId: `f${i}`, xsecToken: `t${i}` })));
     expect(state.items.size).toBe(31);
   });
   it("C11 continues when lazy-load grows scrollHeight", async () => {

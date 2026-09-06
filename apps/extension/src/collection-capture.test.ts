@@ -15,12 +15,11 @@ function pageWith(...cards: string[]): Document {
 function card(feedId: string, token = `token-${feedId}`, options: { explore?: string; source?: string; board?: string; cover?: boolean } = {}): string {
   const board = options.board ?? boardId;
   const explore = options.explore ?? feedId;
-  const source = options.source ?? "pc_feed";
-  return `<article class="feed-card"><a href="/board/${board}/${feedId}?xsec_token=${token}&xsec_source=${source}">board</a><a href="/explore/${explore}">explore</a>${options.cover === false ? "" : "<img src='cover.jpg'>"}</article>`;
+  return `<article class="feed-card"><a href="/board/${board}/${feedId}?xsec_token=${token}${options.source ? `&xsec_source=${options.source}` : ""}">board</a><a href="/explore/${explore}">explore</a>${options.cover === false ? "" : "<img src='cover.jpg'>"}</article>`;
 }
 
 function candidate(feedId: string, token = `token-${feedId}`): CollectionFeedCandidate {
-  return { feedId, xsecToken: token, xsecSource: "pc_feed" };
+  return { feedId, xsecToken: token };
 }
 
 const scroll = (overrides: Partial<Parameters<typeof decideCollectionScroll>[0]> = {}) => ({
@@ -57,7 +56,7 @@ describe("TC1B collection capture engine", () => {
   it("A17 excludes a different board", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { board: "other" })), boardId)).toEqual([]));
   it("A18 excludes an alias mismatch", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { explore: "other" })), boardId)).toEqual([]));
   it("A19 excludes a missing token", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "", {})), boardId)).toEqual([]));
-  it("A20 excludes a missing xsec source", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { source: "" })), boardId)).toEqual([]));
+  it("A20 accepts a missing xsec source", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { source: "" })), boardId)).toHaveLength(1));
   it("A21 completes after stable bottom", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 0, progress: stableProgress(3) }))).toBe("done"));
   it("A22 waits at bottom while loading", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, loading: true }))).toBe("wait"));
   it("A22b waits at bottom when new items arrive", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 1 }))).toBe("wait"));
@@ -69,7 +68,7 @@ describe("TC1B collection capture engine", () => {
     expect([...next.items.keys()]).toEqual(["f1", "f2"]);
   });
   it("A26 deduplicates multiple board anchors and aliases", () => {
-    const html = `<article class='feed-card'><a href='/board/${boardId}/f1?xsec_token=t1&xsec_source=pc_feed'>one</a><a href='/board/${boardId}/f1?xsec_token=t2&xsec_source=pc_feed'>two</a><a href='/explore/f1'>explore</a></article>`;
+    const html = `<article class='feed-card'><a href='/board/${boardId}/f1?xsec_token=t1'>one</a><a href='/board/${boardId}/f1?xsec_token=t2'>two</a><a href='/explore/f1'>explore</a></article>`;
     expect(parseVisibleCollectionFeeds(pageWith(html), boardId)).toHaveLength(1);
   });
   it("keeps route parsing free of token errors", () => expect(parseCollectionRoute("%bad").kind).toBe("other"));
@@ -106,4 +105,24 @@ describe("TC1B collection capture engine", () => {
   it("R12 increments only fully stable bottom rounds", () => expect(advanceCollectionScrollProgress(stableProgress(2), { scrollTop: 500, scrollHeight: 1000, clientHeight: 500, uniqueCount: 0, loading: false }).bottomStableRounds).toBe(3));
   it("R13 reaches DONE after required stable rounds", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 0, progress: stableProgress(3) }))).toBe("done"));
   it("R14 does not accept EXPECTED_COUNT as a stop input", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 0, progress: stableProgress(0) }))).toBe("wait"));
+  it("R1-01 accepts board token with no source and matching alias", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "token")), boardId)).toHaveLength(1));
+  it("R1-02 accepts source-free board route", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "token", { source: "" })), boardId)[0]).toMatchObject({ feedId: "f1", xsecToken: "token" }));
+  it("R1-03 deduplicates duplicate source-free board anchors", () => expect(parseVisibleCollectionFeeds(pageWith(`<article><a href='/board/${boardId}/f1?xsec_token=t1'>a</a><a href='/board/${boardId}/f1?xsec_token=t2'>b</a><a href='/explore/f1'>e</a></article>`), boardId)).toHaveLength(1));
+  it("R1-04 captures 30 source-free feeds", () => expect(parseVisibleCollectionFeeds(pageWith(...Array.from({ length: 30 }, (_, i) => card(`f${i}`))), boardId)).toHaveLength(30));
+  it("R1-05 captures 49 source-free feeds", () => expect(parseVisibleCollectionFeeds(pageWith(...Array.from({ length: 49 }, (_, i) => card(`f${i}`))), boardId)).toHaveLength(49));
+  it("R1-06 captures 500 source-free feeds", () => expect(parseVisibleCollectionFeeds(pageWith(...Array.from({ length: 500 }, (_, i) => card(`f${i}`))), boardId)).toHaveLength(500));
+  it("R1-07 rejects a missing token", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "")), boardId)).toEqual([]));
+  it("R1-08 rejects a missing matching alias", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { explore: "other" })), boardId)).toEqual([]));
+  it("R1-09 rejects a mismatched alias", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { explore: "f2" })), boardId)).toEqual([]));
+  it("R1-10 rejects a different board", () => expect(parseVisibleCollectionFeeds(pageWith(card("f1", "t", { board: "other" })), boardId)).toEqual([]));
+  it("R1-11 rejects profile-only security context", () => expect(parseVisibleCollectionFeeds(pageWith(`<article><a href='/user/profile/u?xsec_token=t&xsec_source=pc_note'>p</a></article>`), boardId)).toEqual([]));
+  it("R1-12 does not borrow profile source", () => expect(parseVisibleCollectionFeeds(pageWith(`<article><a href='/board/${boardId}/f1?xsec_token=t'>b</a><a href='/explore/f1'>e</a><a href='/user/profile/u?xsec_token=p&xsec_source=pc_note'>p</a></article>`), boardId)[0]).toEqual({ feedId: "f1", xsecToken: "t" }));
+  it("R1-13 retains latest nonempty token B", () => {
+    const first = mergeVisibleCollectionFeeds(createCollectionCaptureState(), [candidate("f1", "A")]);
+    expect(mergeVisibleCollectionFeeds(first, [candidate("f1", "B")]).items.get("f1")?.xsecToken).toBe("B");
+  });
+  it("R1-14 preserves A after empty token update", () => {
+    const first = mergeVisibleCollectionFeeds(createCollectionCaptureState(), [candidate("f1", "A")]);
+    expect(mergeVisibleCollectionFeeds(first, [{ ...candidate("f1"), xsecToken: "" }]).items.get("f1")?.xsecToken).toBe("A");
+  });
 });
