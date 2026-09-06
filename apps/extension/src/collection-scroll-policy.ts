@@ -6,6 +6,7 @@ export interface CollectionScrollInput {
   clientHeight: number;
   newUniqueCount: number;
   loading: boolean;
+  relevantLoading?: boolean;
   round: number;
   elapsedMs: number;
   maxRounds: number;
@@ -27,6 +28,7 @@ export interface CollectionScrollMeasurement {
   clientHeight: number;
   uniqueCount: number;
   loading: boolean;
+  relevantLoading?: boolean;
 }
 
 /** 根据连续测量更新 bottom stability；任一稳定条件变化都会清零。 */
@@ -39,7 +41,7 @@ export function advanceCollectionScrollProgress(
     && previous.previousScrollHeight === current.scrollHeight
     && previous.previousUniqueCount === current.uniqueCount
     && atBottom
-    && !current.loading;
+    && !(current.relevantLoading ?? current.loading);
   return {
     previousScrollTop: current.scrollTop,
     previousScrollHeight: current.scrollHeight,
@@ -54,7 +56,7 @@ export function decideCollectionScroll(input: CollectionScrollInput): Collection
   if (input.elapsedMs >= input.maxRuntimeMs) return "abort_timeout";
   const atBottom = input.scrollTop + input.clientHeight >= input.scrollHeight - 1;
   if (!atBottom) return "continue";
-  if (input.loading) return "wait";
+  if (input.relevantLoading ?? input.loading) return "wait";
   if (atBottom && input.newUniqueCount === 0 && input.progress.bottomStableRounds >= input.requiredBottomStableRounds) return "done";
   if (atBottom) return "wait";
   return "wait";

@@ -143,4 +143,33 @@ describe("TC1C collection runtime integration", () => {
   it("R2-10 settled bottom converges to done", async () => expect((await scan()).result.stopReason).toBe("bottom_stable"));
   it("R2-11 still aborts by runtime", async () => expect((await scan({ maxRuntimeMs: 0 })).result.stopReason).toBe("timeout"));
   it("R2-12 still aborts by rounds", async () => expect((await scan({ maxRounds: 1 })).result.stopReason).toBe("max_rounds"));
+  it("R3-06 completes despite continuous unrelated mutation", async () => {
+    const value = await scan({ settle: async () => false });
+    expect(value.result.status).toBe("success");
+    expect(value.result.stopReason).toBe("bottom_stable");
+  });
+  it("R3-07 reaches 50 after non-bottom loading and then completes", async () => {
+    const page = pageWith(39);
+    const scrollOwner = owner(); scrollOwner.scrollHeight = 2_000;
+    let settles = 0;
+    const value = await new CollectionCaptureController({ page, location: { pathname: `/board/${board}` }, scrollOwner, maxRounds: 20, settle: async () => {
+      settles += 1;
+      if (settles === 3) page.body.insertAdjacentHTML("beforeend", Array.from({ length: 11 }, (_, i) => `<article><a href='/board/${board}/late${i}?xsec_token=tlate${i}'>b</a><a href='/explore/late${i}'>e</a></article>`).join(""));
+      return false;
+    } }).start();
+    expect(value).toMatchObject({ status: "success", uniqueCount: 50, stopReason: "bottom_stable" });
+  });
+  it("R3-08 protects against a late lazy-load geometry change", async () => {
+    const scrollOwner = owner();
+    let settles = 0;
+    const value = await new CollectionCaptureController({ page: pageWith(1), location: { pathname: `/board/${board}` }, scrollOwner, maxRounds: 10, settle: async () => {
+      settles += 1;
+      if (settles === 4) scrollOwner.scrollHeight = 800;
+      return settles > 4;
+    } }).start();
+    expect(value.status).toBe("success");
+    expect(value.stopReason).toBe("bottom_stable");
+  });
+  it("R3-09 keeps max rounds effective", async () => expect((await scan({ maxRounds: 1, settle: async () => false })).result.stopReason).toBe("max_rounds"));
+  it("R3-10 keeps max runtime effective", async () => expect((await scan({ maxRuntimeMs: 0 })).result.stopReason).toBe("timeout"));
 });

@@ -130,4 +130,9 @@ describe("TC1B collection capture engine", () => {
   it("R2-03 waits when bottom and loading", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, loading: true }))).toBe("wait"));
   it("R2-04 waits at bottom when new items arrived", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 1 }))).toBe("wait"));
   it("R2-05 finishes only at stable bottom", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, newUniqueCount: 0, progress: stableProgress(3) }))).toBe("done"));
+  it("R3-01 ignores generic loading when bottom facts are stable", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, loading: true, relevantLoading: false, newUniqueCount: 0, progress: stableProgress(3) }))).toBe("done"));
+  it("R3-02 waits when loading coincides with scrollHeight growth", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, loading: true, relevantLoading: true, newUniqueCount: 0, progress: stableProgress(2) }))).toBe("wait"));
+  it("R3-03 waits when loading coincides with unique growth", () => expect(decideCollectionScroll(scroll({ scrollTop: 500, loading: true, relevantLoading: true, newUniqueCount: 1, progress: stableProgress(2) }))).toBe("wait"));
+  it("R3-04 resets stability after geometry growth", () => expect(advanceCollectionScrollProgress(stableProgress(2), { scrollTop: 500, scrollHeight: 1100, clientHeight: 500, uniqueCount: 0, loading: true, relevantLoading: true }).bottomStableRounds).toBe(0));
+  it("R3-05 resets stability after unique growth", () => expect(advanceCollectionScrollProgress(stableProgress(2), { scrollTop: 500, scrollHeight: 1000, clientHeight: 500, uniqueCount: 1, loading: true, relevantLoading: true }).bottomStableRounds).toBe(0));
 });
