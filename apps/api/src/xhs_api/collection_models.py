@@ -146,7 +146,7 @@ class VideoProcessRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     limit: int = Field(default=1, ge=1, le=3)
-    keep_source: bool = False
+    keep_source: bool = True
 
 
 class VideoProcessAcceptedResponse(BaseModel):

@@ -44,7 +44,7 @@ class VideoProcessingService:
         self._ocr = ocr
 
     async def process_snapshot(
-        self, snapshot_id: str, limit: int | None = None, keep_source: bool = False
+        self, snapshot_id: str, limit: int | None = None, keep_source: bool = True
     ) -> list[CollectionVideoContent]:
         """处理 eligible video，单条失败不终止后续条目。
 
@@ -136,6 +136,10 @@ class VideoProcessingService:
             locator = await self._media.acquire(
                 feed_id, access.latest_xsec_token.get_secret_value(), request_id
             )
+            if locator.feed_id != feed_id:
+                return await self._fail_stage(
+                    content, "acquisition_status", "media_identity_mismatch"
+                )
             relative_path, digest, size = await self._artifacts.save(
                 snapshot_id, feed_id, locator
             )
