@@ -37,6 +37,18 @@ from .capability_routing import (
     RoutePolicyError,
     RouteStrategy,
 )
+from .collection import (
+    CollectionBoard,
+    CollectionDiff,
+    CollectionFeedAccessContext,
+    CollectionImportCommand,
+    CollectionImportItem,
+    CollectionSnapshot,
+    CollectionSnapshotItem,
+    CollectionStatus,
+    collection_fingerprint,
+)
+from .collection_ports import CollectionIdempotencyConflictError, CollectionRepository
 from .errors import (
     BrowserTaskError,
     BrowserTaskLeaseConflictError,
@@ -119,6 +131,16 @@ __all__ = [
     "BrowserTaskStatus",
     "ClientDownloadRecord",
     "ClientRecordStatus",
+    "CollectionBoard",
+    "CollectionDiff",
+    "CollectionFeedAccessContext",
+    "CollectionIdempotencyConflictError",
+    "CollectionImportCommand",
+    "CollectionImportItem",
+    "CollectionRepository",
+    "CollectionSnapshot",
+    "CollectionSnapshotItem",
+    "CollectionStatus",
     "DownloadArtifact",
     "DownloadError",
     "DownloadMode",
@@ -174,6 +196,7 @@ __all__ = [
     "browser_task_may_write_platform",
     "build_extension_identity",
     "can_retry_browser_task",
+    "collection_fingerprint",
     "sanitize_browser_page_diagnostics",
     "sanitize_browser_task_message",
     "sanitize_stored_browser_task",

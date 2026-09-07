@@ -12,6 +12,7 @@ from .browser_readiness import BrowserReadinessProbe, BrowserReadinessService
 from .browser_tasks import BrowserTaskService
 from .capability_router import CapabilityRouter
 from .collection import CollectionService
+from .collection_import import CollectionImportService
 from .download import DownloadService
 from .download_tasks import DownloadTaskCoordinator
 from .extension_account_challenges import (
@@ -37,6 +38,7 @@ __all__ = [
     "BrowserReadinessService",
     "BrowserTaskService",
     "CapabilityRouter",
+    "CollectionImportService",
     "CollectionService",
     "DownloadService",
     "DownloadTaskCoordinator",
