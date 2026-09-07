@@ -130,25 +130,24 @@ class CollectionReadMixin:
         Returns:
             当前快照与前一 revision 的 membership 差异。
         """
-        snapshot = await self.get_snapshot(snapshot_id)
-        if not snapshot:
-            return CollectionDiff(added=[], removed=[], retained=[])
-        history = await self.list_snapshots(
-            snapshot.source_type, snapshot.board_id, snapshot.board_revision
-        )
-        previous = next(
-            (
-                candidate
-                for candidate in history
-                if candidate.board_revision == snapshot.board_revision - 1
-            ),
-            None,
-        )
-        previous_items = (
-            await self.list_snapshot_items(previous.snapshot_id) if previous else []
-        )
-        current_items = await self.list_snapshot_items(snapshot_id)
-        return _diff(previous_items, current_items)
+        await self._initialize()
+        async with self._connect() as database:
+            snapshot = await self._get_by_id(database, snapshot_id)
+            if not snapshot:
+                return CollectionDiff(added=[], removed=[], retained=[])
+            previous = await self._get_at_revision(
+                database,
+                snapshot.source_type,
+                snapshot.board_id,
+                snapshot.board_revision - 1,
+            )
+            previous_items = (
+                await self._read_items(database, previous.snapshot_id)
+                if previous
+                else []
+            )
+            current_items = await self._read_items(database, snapshot_id)
+            return _diff(previous_items, current_items)
 
     async def _find_by_request(self, database, request_id: str):
         cursor = await database.execute(
@@ -160,6 +159,19 @@ class CollectionReadMixin:
     async def _get_by_id(self, database, snapshot_id: str):
         cursor = await database.execute(
             "SELECT * FROM collection_snapshot WHERE snapshot_id=?", (snapshot_id,)
+        )
+        row = await cursor.fetchone()
+        return snapshot_from_row(row) if row else None
+
+    async def _get_at_revision(
+        self, database, source_type: str, board_id: str, revision: int
+    ):
+        cursor = await database.execute(
+            """
+            SELECT * FROM collection_snapshot
+            WHERE source_type=? AND board_id=? AND board_revision=?
+            """,
+            (source_type, board_id, revision),
         )
         row = await cursor.fetchone()
         return snapshot_from_row(row) if row else None
