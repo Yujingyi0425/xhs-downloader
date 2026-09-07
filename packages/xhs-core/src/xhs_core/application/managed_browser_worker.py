@@ -10,6 +10,7 @@ from xhs_core.domain import (
     BrowserTask,
     BrowserTaskClaim,
     BrowserTaskExecutionResult,
+    BrowserTaskKind,
     BrowserTaskLeaseConflictError,
     BrowserTaskStatus,
     ManagedBrowserState,
@@ -137,7 +138,14 @@ class ManagedBrowserWorker:
                 BrowserTaskStatus.RUNNING,
                 "受管浏览器正在执行",
             )
-            execution_task = asyncio.create_task(self._executor.execute(running))
+            execution_input = running
+            if claim.task.kind is BrowserTaskKind.GET_FEED_DETAIL:
+                execution_input = running.model_copy(
+                    update={"payload": claim.task.payload}
+                )
+            execution_task = asyncio.create_task(
+                self._executor.execute(execution_input)
+            )
             heartbeat_task = asyncio.create_task(
                 self._renew_lease(claim),
                 name=f"managed-browser-heartbeat-{running.task_id}",

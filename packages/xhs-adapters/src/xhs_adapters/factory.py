@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from xhs_core.application import (
     BrowserExecutionService,
+    BrowserTaskEphemeralInputChannel,
     BrowserTaskService,
     DownloadService,
     ExtensionAccountChallengeChannel,
@@ -93,10 +94,12 @@ def create_browser_runtime(settings: AppSettings) -> BrowserRuntime:
     repository = SqliteBrowserTaskRepository(
         settings.state_dir.joinpath("downloads.db")
     )
-    tasks = BrowserTaskService(repository)
+    ephemeral_channel = BrowserTaskEphemeralInputChannel(ttl_seconds=90, capacity=3)
+    tasks = BrowserTaskService(repository, ephemeral_channel)
     execution = BrowserExecutionService(
         repository,
         settings.browser_task_lease_seconds,
+        ephemeral_channel,
     )
     managed = ChromiumController(settings)
     execution_gate = ManagedBrowserExecutionGate()

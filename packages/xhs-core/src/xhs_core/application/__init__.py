@@ -9,6 +9,12 @@ from .atomic_client import (
 from .browser_execution import BrowserExecutionService
 from .browser_read_provider import BrowserReadProvider
 from .browser_readiness import BrowserReadinessProbe, BrowserReadinessService
+from .browser_task_ephemeral import (
+    DEFAULT_BROWSER_TASK_EPHEMERAL_CHANNEL,
+    BrowserTaskEphemeralInputChannel,
+    EphemeralSecretConflictError,
+    EphemeralSecretUnavailableError,
+)
 from .browser_tasks import BrowserTaskService
 from .capability_router import CapabilityRouter
 from .collection import CollectionService
@@ -29,6 +35,7 @@ from .publication_scheduler import PublicationScheduler
 from .publication_tasks import PublicationTaskService
 
 __all__ = [
+    "DEFAULT_BROWSER_TASK_EPHEMERAL_CHANNEL",
     "AsyncCloseable",
     "AtomicClientSlot",
     "AtomicClientSlotClosedError",
@@ -36,12 +43,15 @@ __all__ = [
     "BrowserReadProvider",
     "BrowserReadinessProbe",
     "BrowserReadinessService",
+    "BrowserTaskEphemeralInputChannel",
     "BrowserTaskService",
     "CapabilityRouter",
     "CollectionImportService",
     "CollectionService",
     "DownloadService",
     "DownloadTaskCoordinator",
+    "EphemeralSecretConflictError",
+    "EphemeralSecretUnavailableError",
     "ExtensionAccountChallengeChannel",
     "ExtensionAccountChallengeClaim",
     "ExtensionCredentialService",

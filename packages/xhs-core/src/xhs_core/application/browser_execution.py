@@ -4,7 +4,6 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from secrets import token_urlsafe
 
-from loguru import logger
 from pydantic import JsonValue
 
 from xhs_core.domain import (
@@ -12,6 +11,7 @@ from xhs_core.domain import (
     BrowserTask,
     BrowserTaskClaim,
     BrowserTaskError,
+    BrowserTaskKind,
     BrowserTaskLeaseConflictError,
     BrowserTaskStatus,
     browser_task_may_write_platform,
@@ -20,6 +20,12 @@ from xhs_core.domain import (
 )
 from xhs_core.domain.browser_ports import BrowserTaskRepository
 from xhs_core.domain.browser_requests import validate_browser_task_result
+
+from .browser_execution_logging import log_discarded_reason
+from .browser_task_ephemeral import (
+    BrowserTaskEphemeralInputChannel,
+    ephemeral_channel_for_repository,
+)
 
 _ACTIVE = {BrowserTaskStatus.CLAIMED, BrowserTaskStatus.RUNNING}
 _TERMINAL = {
@@ -44,11 +50,15 @@ class BrowserExecutionService:
         self,
         repository: BrowserTaskRepository,
         lease_seconds: float,
+        ephemeral_channel: BrowserTaskEphemeralInputChannel | None = None,
     ) -> None:
         if not 0.01 <= lease_seconds <= 3600:
             raise ValueError("浏览器任务租约必须在 0.01 到 3600 秒之间")
         self._repository = repository
         self._lease_seconds = lease_seconds
+        self._ephemeral_channel = ephemeral_channel or ephemeral_channel_for_repository(
+            repository
+        )
 
     async def claim(
         self,
@@ -74,6 +84,18 @@ class BrowserExecutionService:
             _token_hash(token),
             target_driver,
         )
+        if (
+            task
+            and task.kind is BrowserTaskKind.GET_FEED_DETAIL
+            and "xsec_token" not in task.payload
+        ):
+            secret = await self._ephemeral_channel.consume(task.task_id)
+            if secret is None:
+                await self._fail_missing_ephemeral_secret(task, token)
+                return None
+            task = task.model_copy(
+                update={"payload": {**task.payload, "xsec_token": secret}}
+            )
         return (
             BrowserTaskClaim(
                 task=task,
@@ -115,13 +137,25 @@ class BrowserExecutionService:
         if status is BrowserTaskStatus.SUCCEEDED and result is None:
             raise BrowserTaskError("成功任务必须返回结构化结果")
         normalized_result = _normalize_terminal_result(task, status, result)
-        _log_discarded_reason(task_id, status, message)
+        transient_result = None
+        persisted_result = normalized_result
+        if (
+            status is BrowserTaskStatus.SUCCEEDED
+            and task.kind is BrowserTaskKind.GET_FEED_DETAIL
+            and "xsec_token" not in task.payload
+            and normalized_result is not None
+        ):
+            transient_result = normalized_result
+            persisted_result = dict(normalized_result)
+            persisted_result.pop("xsec_token", None)
+            await self._ephemeral_channel.publish_result(task.task_id, transient_result)
+        log_discarded_reason(task_id, status, message)
         now = datetime.now(UTC)
         terminal = status in _TERMINAL
         updated = task.model_copy(
             update={
                 "status": status,
-                "result": normalized_result if terminal else task.result,
+                "result": persisted_result if terminal else task.result,
                 "message": sanitize_browser_task_message(status, message),
                 "lease_expires_at": (
                     None if terminal else now + timedelta(seconds=self._lease_seconds)
@@ -129,16 +163,48 @@ class BrowserExecutionService:
                 "updated_at": now,
             }
         )
-        if not await self._repository.save_if_status(
-            updated,
+        try:
+            saved = await self._repository.save_if_status(
+                updated,
+                task.status,
+                expected_updated_at=task.updated_at,
+                expected_lease_expires_at=task.lease_expires_at,
+                expected_lease_hash=_token_hash(lease_token),
+                clear_lease=terminal,
+            )
+        except Exception:
+            if transient_result is not None:
+                await self._ephemeral_channel.discard(task.task_id)
+            raise
+        if not saved:
+            if transient_result is not None:
+                await self._ephemeral_channel.discard(task.task_id)
+            raise BrowserTaskLeaseConflictError("浏览器任务状态已经变化，请刷新后重试")
+        return updated
+
+    async def _fail_missing_ephemeral_secret(
+        self,
+        task: BrowserTask,
+        lease_token: str,
+    ) -> None:
+        failed = task.model_copy(
+            update={
+                "status": BrowserTaskStatus.FAILED,
+                "executor_id": None,
+                "extension_id": None,
+                "lease_expires_at": None,
+                "message": "详情任务临时访问上下文已失效",
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        await self._repository.save_if_status(
+            failed,
             task.status,
             expected_updated_at=task.updated_at,
             expected_lease_expires_at=task.lease_expires_at,
             expected_lease_hash=_token_hash(lease_token),
-            clear_lease=terminal,
-        ):
-            raise BrowserTaskLeaseConflictError("浏览器任务状态已经变化，请刷新后重试")
-        return updated
+            clear_lease=True,
+        )
 
     async def reconcile_expired(self) -> None:
         """恢复租约过期任务，并隔离可能已经产生外部写入的任务。"""
@@ -221,30 +287,3 @@ def _normalize_terminal_result(
     if status in {BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW}:
         return sanitize_browser_page_diagnostics(result)
     return None
-
-
-def _log_discarded_reason(
-    task_id: str,
-    status: BrowserTaskStatus,
-    message: str,
-) -> None:
-    """把即将被脱敏掉的失败原因留在本地日志里。
-
-    对外的消息必须白名单化, 执行器返回的原文可能夹带页面内容。但整条原因连本地
-    日志都不留, 出问题时连开发者也无从查起——界面上只剩一句通用失败。这里只写本机
-    日志文件, 不进入任何 API 响应。
-
-    Args:
-        task_id: 浏览器任务标识。
-        status: 任务即将进入的状态。
-        message: 执行器返回的原始消息。
-    """
-    safe = sanitize_browser_task_message(status, message)
-    if safe == message:
-        return
-    logger.warning(
-        "浏览器任务 {} 进入 {} 的原始原因：{}",
-        task_id,
-        status.value,
-        message[:500],
-    )

@@ -145,6 +145,7 @@ class BrowserReadProvider:
             FeedDetailResult,
             lambda value: value.feed_id == feed_id,
             "详情结果与请求的帖子不一致",
+            ephemeral_detail=True,
         )
 
     async def get_user_profile(

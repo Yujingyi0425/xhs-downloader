@@ -46,6 +46,7 @@ class _BrowserReadExecution:
         result_model: type[T],
         identity_matches: Callable[[T], bool],
         mismatch_message: str,
+        ephemeral_detail: bool = False,
     ) -> T:
         """提交并等待一个浏览器只读任务。
 
@@ -56,6 +57,7 @@ class _BrowserReadExecution:
             result_model: 成功终态必须符合的结果模型。
             identity_matches: 核对结果与请求对象是否一致。
             mismatch_message: 对象不一致时的安全错误说明。
+            ephemeral_detail: 是否使用 token 不落盘的详情提交路径。
 
         Returns:
             通过结构和对象身份双重核验的能力结果。
@@ -65,12 +67,14 @@ class _BrowserReadExecution:
         """
         await self._ensure_available()
         try:
-            submitted = await self._tasks.submit(
-                kind,
-                payload,
-                request_id,
-                self._driver,
-            )
+            if ephemeral_detail:
+                submitted = await self._tasks.submit_ephemeral_feed_detail(
+                    payload, request_id, self._driver
+                )
+            else:
+                submitted = await self._tasks.submit(
+                    kind, payload, request_id, self._driver
+                )
         except BrowserTaskError as error:
             raise _error(
                 ProviderFailureCode.INVALID_RESULT,

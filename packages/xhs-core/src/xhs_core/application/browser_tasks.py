@@ -19,20 +19,41 @@ from xhs_core.domain.browser_ports import BrowserTaskRepository
 from xhs_core.domain.browser_requests import validate_browser_task_payload
 
 from .browser_task_claiming import _BrowserTaskClaimWaiter
+from .browser_task_ephemeral import (
+    BrowserTaskEphemeralInputChannel,
+    ephemeral_channel_for_repository,
+)
+from .browser_task_ephemeral_service import BrowserTaskEphemeralServiceMixin
 from .browser_task_resolution import requeue_failed_task, resolve_reviewed_task
 
 
-class BrowserTaskService:
+class BrowserTaskService(BrowserTaskEphemeralServiceMixin):
     """管理浏览器任务的幂等提交、查询与显式重试。
 
     Args:
         repository: 浏览器任务仓储。
     """
 
-    def __init__(self, repository: BrowserTaskRepository) -> None:
+    def __init__(
+        self,
+        repository: BrowserTaskRepository,
+        ephemeral_channel: BrowserTaskEphemeralInputChannel | None = None,
+    ) -> None:
         self._repository = repository
+        self._ephemeral_channel = ephemeral_channel or ephemeral_channel_for_repository(
+            repository
+        )
         self._submit_lock = Lock()
         self._claim_waiter = _BrowserTaskClaimWaiter()
+
+    @property
+    def ephemeral_channel(self) -> BrowserTaskEphemeralInputChannel:
+        """返回详情任务使用的进程内临时通道。
+
+        Returns:
+            当前服务绑定的临时通道。
+        """
+        return self._ephemeral_channel
 
     async def submit(
         self,
@@ -173,57 +194,15 @@ class BrowserTaskService:
                 BrowserTaskStatus.FAILED,
                 BrowserTaskStatus.NEEDS_REVIEW,
             }:
+                if task.status is BrowserTaskStatus.SUCCEEDED:
+                    result = await self._ephemeral_channel.consume_result(task.task_id)
+                    if result is not None:
+                        return task.model_copy(update={"result": result})
                 return task
             remaining = deadline - get_running_loop().time()
             if remaining <= 0:
                 return task
             await sleep(min(poll_interval, remaining))
-
-    async def cancel_before_running(
-        self,
-        task_id: str,
-        message: str = "等待浏览器执行超时，任务已取消",
-    ) -> BrowserTask:
-        """在页面执行前原子取消排队或已领取任务。
-
-        ``claimed`` 任务仍须先凭租约推进到 ``running`` 才能操作页面。
-        本方法与该推进使用同一状态比较更新，因此取消成功后陈旧执行器
-        会在页面动作前因租约状态无效而停止。已经进入 ``running`` 的
-        任务不会被取消。
-
-        Args:
-            task_id: 任务唯一标识。
-            message: 不包含敏感数据的取消原因。
-
-        Returns:
-            取消后的明确失败任务，或已经开始、完成的最新任务。
-
-        Raises:
-            BrowserTaskError: 任务不存在。
-        """
-        while True:
-            task = await self.require(task_id)
-            if task.status not in {
-                BrowserTaskStatus.QUEUED,
-                BrowserTaskStatus.CLAIMED,
-            }:
-                return task
-            canceled = task.model_copy(
-                update={
-                    "status": BrowserTaskStatus.FAILED,
-                    "executor_id": None,
-                    "extension_id": None,
-                    "lease_expires_at": None,
-                    "message": message[:1000],
-                    "updated_at": datetime.now(UTC),
-                }
-            )
-            if await self._repository.save_if_status(
-                canceled,
-                task.status,
-                clear_lease=True,
-            ):
-                return canceled
 
     async def retry(self, task_id: str) -> BrowserTask:
         """重新排队一个明确失败的任务。
