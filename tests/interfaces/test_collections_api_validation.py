@@ -127,14 +127,16 @@ async def test_collection_api_redacts_injected_failure(
     ],
 )
 async def test_collection_api_redacts_pre_route_validation(
-    tmp_path, payload: dict[str, object]
+    tmp_path, payload: dict[str, object], caplog
 ) -> None:
     """pre-route validation 失败也不会回显 token sentinel。
 
     Args:
         tmp_path: pytest 提供的临时目录。
         payload: 触发请求模型校验失败的输入。
+        caplog: pytest 日志捕获 fixture。
     """
+    caplog.set_level(logging.DEBUG)
     api = create_api(AppSettings(work_path=tmp_path), lambda _: FakeService())
     async with api.router.lifespan_context(api), await _client(api) as client:
         headers = await _register(client)
@@ -145,4 +147,5 @@ async def test_collection_api_redacts_pre_route_validation(
 
     assert response.status_code == 422
     assert _SENTINEL not in response.text
+    assert all(_SENTINEL not in record.getMessage() for record in caplog.records)
     assert state.status_code == 404

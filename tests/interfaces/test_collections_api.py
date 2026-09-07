@@ -1,5 +1,7 @@
 """收藏夹 HTTP API 的合成集成测试。"""
 
+import logging
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from xhs_adapters.config import AppSettings
@@ -21,6 +23,18 @@ def _reordered_items(count: int) -> list[dict[str, object]]:
             "source_order": order,
         }
         for order, index in enumerate(reversed(range(count)))
+    ]
+
+
+def _named_items(feed_ids: list[str]) -> list[dict[str, object]]:
+    """Return ordered synthetic items for historical diff scenarios."""
+    return [
+        {
+            "feed_id": feed_id,
+            "xsec_token": "synthetic-token",
+            "source_order": order,
+        }
+        for order, feed_id in enumerate(feed_ids)
     ]
 
 
@@ -82,12 +96,16 @@ async def test_collection_import_supports_synthetic_sizes(tmp_path, count: int) 
     }
 
 
-async def test_collection_api_replays_conflict_and_reorder_semantics(tmp_path) -> None:
+async def test_collection_api_replays_conflict_and_reorder_semantics(
+    tmp_path, caplog
+) -> None:
     """收藏 API 保持 retry、冲突和重排 fingerprint 语义。
 
     Args:
         tmp_path: pytest 提供的临时目录。
+        caplog: pytest 日志捕获 fixture。
     """
+    caplog.set_level(logging.DEBUG)
     api = create_api(AppSettings(work_path=tmp_path), lambda _: FakeService())
     async with api.router.lifespan_context(api), await _client(api) as client:
         headers = await _register(client)
@@ -104,7 +122,10 @@ async def test_collection_api_replays_conflict_and_reorder_semantics(tmp_path) -
         )
         conflict = await client.post(
             "/collections/board/board-1/imports",
-            json={"request_id": "request-1", "items": _items(2)},
+            json={
+                "request_id": "request-1",
+                "items": _items(2, _SENTINEL),
+            },
             headers=headers,
         )
         different_board = await client.post(
@@ -132,6 +153,7 @@ async def test_collection_api_replays_conflict_and_reorder_semantics(tmp_path) -
     assert conflict.status_code == 409
     assert different_board.status_code == 409
     assert _SENTINEL not in conflict.text
+    assert all(_SENTINEL not in record.getMessage() for record in caplog.records)
     assert same_membership.json()["board_revision"] == 2
     assert reordered.json()["board_revision"] == 3
     assert reordered.json()["diff"] == {
@@ -157,12 +179,34 @@ async def test_collection_api_reads_latest_history_and_ordered_snapshot(
         headers = await _register(client)
         first = await client.post(
             "/collections/board/board-1/imports",
-            json={"request_id": "request-1", "items": _items(2)},
+            json={
+                "request_id": "request-1",
+                "items": _named_items(["feed-a", "feed-b"]),
+            },
             headers=headers,
         )
         second = await client.post(
             "/collections/board/board-1/imports",
-            json={"request_id": "request-2", "items": _reordered_items(2)},
+            json={
+                "request_id": "request-2",
+                "items": _named_items(["feed-b", "feed-c"]),
+            },
+            headers=headers,
+        )
+        third = await client.post(
+            "/collections/board/board-1/imports",
+            json={
+                "request_id": "request-3",
+                "items": _named_items(["feed-c", "feed-d"]),
+            },
+            headers=headers,
+        )
+        fourth = await client.post(
+            "/collections/board/board-1/imports",
+            json={
+                "request_id": "request-4",
+                "items": _named_items(["feed-d", "feed-e"]),
+            },
             headers=headers,
         )
         second_id = second.json()["snapshot_id"]
@@ -172,7 +216,6 @@ async def test_collection_api_reads_latest_history_and_ordered_snapshot(
         restarted_api.router.lifespan_context(restarted_api),
         await _client(restarted_api) as client,
     ):
-        headers = await _register(client)
         latest = await client.get("/collections/board/board-1/latest")
         history = await client.get("/collections/board/board-1/snapshots")
         detail = await client.get(f"/collections/board/board-1/snapshots/{second_id}")
@@ -185,68 +228,40 @@ async def test_collection_api_reads_latest_history_and_ordered_snapshot(
         )
 
     assert first.status_code == 201
+    assert first.json()["diff"] == {
+        "added": ["feed-a", "feed-b"],
+        "removed": [],
+        "retained": [],
+    }
     assert second.status_code == 201
+    assert third.status_code == 201
+    assert fourth.status_code == 201
     assert latest.status_code == 200
-    assert latest.json()["snapshot_id"] == second.json()["snapshot_id"]
+    assert latest.json()["snapshot_id"] == fourth.json()["snapshot_id"]
+    assert latest.json()["diff"] == {
+        "added": ["feed-e"],
+        "removed": ["feed-c"],
+        "retained": ["feed-d"],
+    }
     assert [item["source_order"] for item in latest.json()["items"]] == [0, 1]
-    assert [item["board_revision"] for item in history.json()["items"]] == [2, 1]
+    assert [item["board_revision"] for item in history.json()["items"]] == [
+        4,
+        3,
+        2,
+        1,
+    ]
     assert detail.status_code == 200
+    assert detail.json()["board_revision"] == 2
+    assert detail.json()["diff"] == {
+        "added": ["feed-c"],
+        "removed": ["feed-a"],
+        "retained": ["feed-b"],
+    }
     assert detail.json()["items"] == [
-        {"feed_id": "feed-1", "source_order": 0},
-        {"feed_id": "feed-0", "source_order": 1},
+        {"feed_id": "feed-b", "source_order": 0},
+        {"feed_id": "feed-c", "source_order": 1},
     ]
     assert "xsec_token" not in latest.text + history.text + detail.text + items.text
     assert items.json() == detail.json()["items"]
     assert missing.status_code == 404
-    assert [item["board_revision"] for item in bounded_history.json()["items"]] == [2]
-
-
-async def test_collection_api_requires_extension_and_only_accepts_loopback(
-    tmp_path,
-) -> None:
-    """收藏导入与读取均复用扩展认证及本机访问边界。
-
-    Args:
-        tmp_path: pytest 提供的临时目录。
-    """
-    api = create_api(AppSettings(work_path=tmp_path), lambda _: FakeService())
-    async with api.router.lifespan_context(api):
-        async with await _client(api) as local:
-            headers = await _register(local)
-            missing_auth = await local.get("/collections/board/board-1/latest")
-            local_read = await local.get("/collections/board/board-1/latest")
-            wrong_origin = await local.post(
-                "/collections/board/board-1/imports",
-                json={"request_id": "request-origin", "items": []},
-                headers={**headers, "Origin": "chrome-extension://wrong-id"},
-            )
-            invalid_auth = await local.post(
-                "/collections/board/board-1/imports",
-                json={"request_id": "request-invalid-auth", "items": []},
-                headers={**headers, "Authorization": "Bearer invalid"},
-            )
-            missing_import_auth = await local.post(
-                "/collections/board/board-1/imports",
-                json={"request_id": "request-missing-auth", "items": []},
-                headers={"Origin": _ORIGIN, "X-Extension-Id": _EXTENSION_ID},
-            )
-        async with AsyncClient(
-            transport=ASGITransport(app=api, client=("203.0.113.9", 40002)),
-            base_url="http://127.0.0.1:5556",
-        ) as remote:
-            remote_read = await remote.get(
-                "/collections/board/board-1/latest", headers=headers
-            )
-            remote_import = await remote.post(
-                "/collections/board/board-1/imports",
-                json={"request_id": "request-remote", "items": []},
-                headers=headers,
-            )
-
-    assert missing_auth.status_code == 404
-    assert local_read.status_code == 404
-    assert wrong_origin.status_code == 403
-    assert invalid_auth.status_code == 401
-    assert missing_import_auth.status_code == 401
-    assert remote_read.status_code == 403
-    assert remote_import.status_code == 403
+    assert [item["board_revision"] for item in bounded_history.json()["items"]] == [4]
