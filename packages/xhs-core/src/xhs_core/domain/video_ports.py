@@ -54,6 +54,20 @@ class VideoContentRepository(Protocol):
         """
         ...
 
+    async def save_if_attempt(
+        self, content: CollectionVideoContent, expected_attempt: int
+    ) -> bool:
+        """仅在 attempt 仍为 expected_attempt 时保存。
+
+        Args:
+            content: 待保存的视频内容。
+            expected_attempt: 预期的当前尝试次数。
+
+        Returns:
+            CAS 是否成功。
+        """
+        ...
+
     async def list_snapshot(self, snapshot_id: str) -> list[CollectionVideoContent]:
         """读取快照内的全部视频内容。 Args: 快照标识。 Returns: 内容列表。"""
         ...
@@ -81,6 +95,25 @@ class VideoArtifactStore(Protocol):
         """将媒体定位器安全写入本地 artifact。 Args: 快照、身份和媒体。
 
         Returns: 相对路径、摘要和大小。
+        """
+        ...
+
+    def resolve_path(self, relative_path: str) -> str:
+        """解析仅供运行时使用的本地物理路径。
+
+        Args:
+            relative_path: 相对于 artifact 根目录的安全路径。
+
+        Returns:
+            运行时可读取的物理路径。
+        """
+        ...
+
+    async def discard(self, relative_path: str) -> None:
+        """删除不再需要的本地源文件。
+
+        Args:
+            relative_path: 相对于 artifact 根目录的安全路径。
         """
         ...
 

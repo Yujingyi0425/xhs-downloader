@@ -111,6 +111,37 @@ class SqliteCollectionVideoContentRepository:
             await database.commit()
             return cursor.rowcount == 1
 
+    async def save_if_attempt(
+        self, content: CollectionVideoContent, expected_attempt: int
+    ) -> bool:
+        """按 JSON 中的 attempt_count 做 CAS，拒绝旧 worker 写入。
+
+        Args:
+            content: 待保存的视频内容。
+            expected_attempt: 预期的当前尝试次数。
+
+        Returns:
+            CAS 是否成功。
+        """
+        await self._initialize()
+        payload = content.model_dump_json()
+        async with connect(self._database) as database:
+            cursor = await database.execute(
+                """UPDATE collection_video_content SET status=?, content_json=?
+                WHERE snapshot_id=? AND feed_id=? AND processing_version=?
+                AND json_extract(content_json, '$.attempt_count')=?""",
+                (
+                    content.status.value,
+                    payload,
+                    content.snapshot_id,
+                    content.feed_id,
+                    content.processing_version,
+                    expected_attempt,
+                ),
+            )
+            await database.commit()
+            return cursor.rowcount == 1
+
     async def list_snapshot(self, snapshot_id: str) -> list[CollectionVideoContent]:
         """按 feed_id 稳定读取一个快照的视频内容。
 

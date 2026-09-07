@@ -1,5 +1,6 @@
 """TC4 视频内容处理应用服务。"""
 
+from asyncio import to_thread
 from hashlib import sha256
 
 from xhs_core.domain import (
@@ -43,13 +44,14 @@ class VideoProcessingService:
         self._ocr = ocr
 
     async def process_snapshot(
-        self, snapshot_id: str, limit: int | None = None
+        self, snapshot_id: str, limit: int | None = None, keep_source: bool = False
     ) -> list[CollectionVideoContent]:
         """处理 eligible video，单条失败不终止后续条目。
 
         Args:
             snapshot_id: 收藏快照标识。
             limit: 本轮最多处理的 eligible video 数量。
+            keep_source: 是否保留本地 source.mp4。
 
         Returns:
             按快照顺序返回本轮处理结果。
@@ -73,7 +75,15 @@ class VideoProcessingService:
             if current and current.status is VideoProcessingStatus.SUCCEEDED:
                 processed.append(current)
                 continue
-            result = await self._process_one(snapshot_id, membership.feed_id, current)
+            if current and current.status in {
+                VideoProcessingStatus.RUNNING,
+                VideoProcessingStatus.FAILED_TERMINAL,
+            }:
+                processed.append(current)
+                continue
+            result = await self._process_one(
+                snapshot_id, membership.feed_id, current, keep_source
+            )
             processed.append(result)
         return processed
 
@@ -89,7 +99,11 @@ class VideoProcessingService:
         return await self._videos.list_snapshot(snapshot_id)
 
     async def _process_one(
-        self, snapshot_id: str, feed_id: str, current: CollectionVideoContent | None
+        self,
+        snapshot_id: str,
+        feed_id: str,
+        current: CollectionVideoContent | None,
+        keep_source: bool,
     ):
         content = current or CollectionVideoContent(
             snapshot_id=snapshot_id, feed_id=feed_id
@@ -119,17 +133,22 @@ class VideoProcessingService:
             locator = await self._media.acquire(
                 feed_id, access.xsec_token.get_secret_value(), request_id
             )
-            path, digest, size = await self._artifacts.save(
+            relative_path, digest, size = await self._artifacts.save(
                 snapshot_id, feed_id, locator
             )
-            duration, frames = self._inspector.inspect(path)
+            path = (
+                self._artifacts.resolve_path(relative_path)
+                if hasattr(self._artifacts, "resolve_path")
+                else relative_path
+            )
+            duration, frames = await to_thread(self._inspector.inspect, path)
             content = content.model_copy(
                 update={
                     "acquisition_status": VideoStageStatus.SUCCEEDED,
                     "duration_seconds": duration,
                     "artifact": {
                         "local_video_available": True,
-                        "relative_path": path,
+                        "relative_path": relative_path,
                         "sha256": digest,
                         "size": size,
                     },
@@ -148,7 +167,7 @@ class VideoProcessingService:
                 content, "acquisition_status", "media_download_failed"
             )
         try:
-            transcript = self._transcriber.transcribe(path)
+            transcript = await to_thread(self._transcriber.transcribe, path)
             content = content.model_copy(
                 update={
                     "stt_status": VideoStageStatus.SUCCEEDED,
@@ -158,11 +177,23 @@ class VideoProcessingService:
         except Exception:
             return await self._fail_stage(content, "stt_status", "stt_failed")
         try:
-            ocr = self._ocr.recognize(frames)
+            ocr = await to_thread(self._ocr.recognize, frames)
             content = content.model_copy(
                 update={"ocr_status": VideoStageStatus.SUCCEEDED, "ocr": ocr}
             )
-            return await self._videos.save(
+            if not keep_source and hasattr(self._artifacts, "discard"):
+                await self._artifacts.discard(relative_path)
+                content = content.model_copy(
+                    update={
+                        "artifact": content.artifact.model_copy(
+                            update={
+                                "local_video_available": False,
+                                "relative_path": None,
+                            }
+                        )
+                    }
+                )
+            return await self._persist(
                 content.model_copy(update={"status": VideoProcessingStatus.SUCCEEDED})
             )
         except Exception:
@@ -174,6 +205,17 @@ class VideoProcessingService:
         status = overall_video_status(
             content.acquisition_status, content.stt_status, content.ocr_status
         )
-        return await self._videos.save(
+        return await self._persist(
             content.model_copy(update={"status": status, "last_error_code": code})
         )
+
+    async def _persist(self, content: CollectionVideoContent):
+        """以 attempt CAS 保存结果，兼容合成用的旧式 fake repository。"""
+        save_if_attempt = getattr(self._videos, "save_if_attempt", None)
+        if save_if_attempt is not None:
+            accepted = await save_if_attempt(content, content.attempt_count)
+            if not accepted:
+                return content
+        else:
+            await self._videos.save(content)
+        return content

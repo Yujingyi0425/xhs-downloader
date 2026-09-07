@@ -46,7 +46,9 @@ def create_video_router(
             raise HTTPException(status_code=404, detail="收藏夹快照不存在")
         started = coordinator.start(
             f"video:{snapshot_id}",
-            lambda: service.process_snapshot(snapshot_id, payload.limit),
+            lambda: service.process_snapshot(
+                snapshot_id, payload.limit, payload.keep_source
+            ),
         )
         return VideoProcessAcceptedResponse(
             snapshot_id=snapshot_id,
@@ -63,9 +65,15 @@ def create_video_router(
         _require_loopback(request)
         if await repository.get_snapshot(snapshot_id) is None:
             raise HTTPException(status_code=404, detail="收藏夹快照不存在")
+        contents = {
+            item.feed_id: item for item in await service.list_snapshot(snapshot_id)
+        }
         return [
-            VideoContentResponse(content=item)
-            for item in await service.list_snapshot(snapshot_id)
+            VideoContentResponse(
+                content=contents[item.feed_id], source_order=item.source_order
+            )
+            for item in await repository.list_snapshot_items(snapshot_id)
+            if item.feed_id in contents
         ]
 
     return router

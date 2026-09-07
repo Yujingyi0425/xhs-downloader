@@ -161,4 +161,5 @@ class VideoContentResponse(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    source_order: int = Field(ge=0)
     content: CollectionVideoContent

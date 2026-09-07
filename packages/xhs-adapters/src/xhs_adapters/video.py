@@ -65,6 +65,28 @@ class SafeVideoArtifactStore:
             raise
         return str(target.relative_to(self._root)), digest.hexdigest(), size
 
+    def resolve_path(self, relative_path: str) -> str:
+        """把安全相对路径解析为仅供运行时使用的物理路径。
+
+        Args:
+            relative_path: 相对于 artifact 根目录的安全路径。
+
+        Returns:
+            解析后的物理路径。
+        """
+        candidate = (self._root / relative_path).resolve()
+        if self._root.resolve() not in candidate.parents:
+            raise ValueError("artifact path escapes configured root")
+        return str(candidate)
+
+    async def discard(self, relative_path: str) -> None:
+        """删除处理完成后不再保留的本地源文件。
+
+        Args:
+            relative_path: 相对于 artifact 根目录的安全路径。
+        """
+        await to_thread((self._root / relative_path).unlink, True)
+
 
 class PyAvVideoInspector:
     """使用 PyAV 探测时长并抽取固定间隔、有界关键帧。"""
@@ -88,7 +110,7 @@ class PyAvVideoInspector:
         wanted = set(range(0, max(1, int(duration) + self._interval), self._interval))
         frames: list[tuple[float, object]] = []
         for frame in container.decode(stream):
-            timestamp = float(frame.time or 0) * float(stream.time_base)
+            timestamp = float(frame.time or 0)
             second = (
                 min(wanted, key=lambda value: abs(value - timestamp)) if wanted else 0
             )
@@ -176,12 +198,17 @@ class PaddleOcrRecognizer:
 
 
 def _ocr_text(output) -> str:
-    """从 PaddleOCR 的嵌套预测结构中提取纯文字。"""
+    """仅从 PaddleOCR 2.x 的 ``(text, score)`` 行记录提取文字。"""
     values: list[str] = []
 
     def visit(value) -> None:
-        if isinstance(value, str):
-            values.append(value.strip())
+        if (
+            isinstance(value, (list, tuple))
+            and len(value) == 2
+            and isinstance(value[0], str)
+            and isinstance(value[1], (int, float))
+        ):
+            values.append(value[0].strip())
         elif isinstance(value, (list, tuple)):
             for item in value:
                 visit(item)
