@@ -8,6 +8,9 @@ BASELINE_COMMIT=af89827e0de457114fda5726b51490765b5a6daf
 R1_SOURCE_COMMIT=a4ef87c79b5c7763838c9c6b89e45b6a1fdbca7f
 R1_TEST_COMMIT=d9e71c624da641553b3633f5ead3a9af52365044
 R1_EVIDENCE_COMMIT=232d223271d683d89e58ae69ba14bba49ce234a5
+R2_SOURCE_COMMIT=aa47178cadebfdec44ad2880db96bcd4ce34e479
+R2_TEST_COMMIT=9f01176c73db7d9941f03993c82ae788a92e1bc3
+R2_EVIDENCE_BASE=0121e77f2f3d30e87cf4d966fddfcf913058a4b6
 ```
 
 ## API boundary
@@ -76,6 +79,7 @@ TOKEN_EXCEPTION_LOG_REDACTION=PASS
 TOKEN_CONFLICT_REDACTION=PASS
 TOKEN_INJECTED_FAILURE_REDACTION=PASS
 INVALID_REQUEST_DB_UNCHANGED=PASS
+CONFLICT_DB_UNCHANGED=PASS
 TOKEN_ONLY_RETRY_SEMANTICS=PASS
 ```
 
@@ -89,9 +93,25 @@ The actual sentinel `synthetic-secret-token-never-leak` is exercised in API retr
 | replay, 409 conflict, reorder and token-only retry | `tests/interfaces/test_collections_api.py::test_collection_api_replays_conflict_and_reorder_semantics` |
 | latest/history/snapshot reads, exact historical diff after later revisions, restart and ordered items | `tests/interfaces/test_collections_api.py::test_collection_api_reads_latest_history_and_ordered_snapshot` |
 | extension authentication and loopback boundary | `tests/interfaces/test_collections_api_access.py::test_collection_api_requires_extension_and_only_accepts_loopback` |
-| validation and log redaction | `tests/interfaces/test_collections_api.py::test_collection_api_redacts_validation_error_and_logs` |
+| validation and log redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_validation_error_and_logs` |
 | pre-route 501/extra/malformed/order validation redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_pre_route_validation` |
 | injected failure response and log redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_injected_failure` |
+
+The R2 claims below are grounded in the current test locations above and the replay/read scenarios in this table; no historical result is inferred from a prior checkpoint alone.
+
+```text
+HISTORICAL_SNAPSHOT_DIFF=PASS
+HISTORICAL_DIFF_AFTER_LATER_REVISIONS=PASS
+FIRST_REVISION_DIFF_VS_EMPTY=PASS
+LATEST_DIFF=PASS
+HISTORICAL_DIFF_AFTER_RESTART=PASS
+TOKEN_CONFLICT_REDACTION=PASS
+TOKEN_CONFLICT_LOG_REDACTION=PASS
+TOKEN_PRE_ROUTE_VALIDATION_REDACTION=PASS
+TOKEN_PRE_ROUTE_LOG_REDACTION=PASS
+INVALID_REQUEST_DB_UNCHANGED=PASS
+CONFLICT_DB_UNCHANGED=PASS
+```
 
 ## Scope
 
@@ -103,6 +123,8 @@ BROWSER_TASK_CREATED=NO
 MEDIA_DOWNLOADED=NO
 PUBLIC_ACCESS_CONTEXT_ENDPOINT=NONE
 NEW_DEPENDENCIES=NO
+TC2B3_WORK_STARTED=NO
+TC3_WORK_STARTED=NO
 ```
 
 ## Formal quality gate
@@ -113,6 +135,6 @@ RUFF_FORMAT=PASS
 PYTEST=PASS
 PYTEST_TOTAL=658
 PYTEST_FAILED=0
-COVERAGE=91.34%
+COVERAGE=91.35%
 COVERAGE_GATE=PASS (>=85%)
 ```
