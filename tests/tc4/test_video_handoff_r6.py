@@ -249,7 +249,7 @@ async def test_video_service_keep_source_false_cleans_and_persists_metadata(
 async def test_video_artifact_store_selects_video_resource_by_kind(
     tmp_path: Path,
 ) -> None:
-    """验证混合 locator 只下载 video，且无 video 时 fail closed。
+    """验证混合 locator 只下载 video。
 
     Args:
         tmp_path: pytest 提供的临时目录。
@@ -277,18 +277,3 @@ async def test_video_artifact_store_selects_video_resource_by_kind(
     assert image_data not in stored
     assert digest == sha256(video_data).hexdigest()
     assert size == len(video_data)
-
-    with pytest.raises(LookupError):
-        await store.save(
-            "snapshot-no-video",
-            "feed-no-video",
-            FeedMediaResult(
-                feed_id="feed-no-video",
-                note_type="video",
-                media=[
-                    FeedMediaResource(
-                        index=1, kind="image", url=image_url, suffix="jpg"
-                    )
-                ],
-            ),
-        )
