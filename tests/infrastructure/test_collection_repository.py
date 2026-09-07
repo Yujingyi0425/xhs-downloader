@@ -16,6 +16,8 @@ from xhs_core.domain.collection import (
 )
 from xhs_core.domain.collection_ports import CollectionIdempotencyConflictError
 
+from .collection_test_helpers import _snapshot_visible_state
+
 
 def command(request_id: str, feeds: list[str], token: str = "synthetic-token"):
     """创建 synthetic 导入命令。
@@ -93,24 +95,36 @@ async def test_request_idempotency_conflict_and_token_only_retry(
         tmp_path: Pytest 临时目录。
     """
     repository = SqliteCollectionRepository(tmp_path / "state.db")
-    original_command = command("same", ["feed-a"], "token-old")
+    original_command = command("initial", ["feed-a"], "token-old")
     original, _ = await repository.import_snapshot(
         original_command, collection_fingerprint(original_command), datetime.now(UTC)
     )
-    retry_command = command("same", ["feed-a"], "token-new")
+    observation = command("same", ["feed-a", "feed-b"], "token-new")
+    observed, first_diff = await repository.import_snapshot(
+        observation, collection_fingerprint(observation), datetime.now(UTC)
+    )
+    retry_command = command("same", ["feed-a", "feed-b"], "token-retry")
     retry, _ = await repository.import_snapshot(
         retry_command, collection_fingerprint(retry_command), datetime.now(UTC)
     )
-    assert retry.snapshot_id == original.snapshot_id
+    _, retry_diff = await repository.import_snapshot(
+        retry_command, collection_fingerprint(retry_command), datetime.now(UTC)
+    )
+    assert retry.snapshot_id == observed.snapshot_id
+    assert first_diff == retry_diff
+    assert first_diff.added == ["feed-b"]
+    assert first_diff.retained == ["feed-a"]
+    assert original.board_revision == 1
     assert (
         await repository.get_latest_snapshot("board", "synthetic-board")
-    ).board_revision == 1
+    ).board_revision == 2
     assert (
         await repository.get_feed_access_context("feed-a")
-    ).latest_xsec_token.get_secret_value() == "token-old"
+    ).latest_xsec_token.get_secret_value() == "token-new"
     with pytest.raises(CollectionIdempotencyConflictError):
+        conflict = command("same", ["feed-c"])
         await repository.import_snapshot(
-            command("same", ["feed-b"]), "different", datetime.now(UTC)
+            conflict, collection_fingerprint(conflict), datetime.now(UTC)
         )
 
 
@@ -172,15 +186,23 @@ async def test_exact_rollback_for_new_and_existing_board(tmp_path: Path) -> None
     await healthy.import_snapshot(
         command("old", ["feed-old"], "old-token"), "old", datetime.now(UTC)
     )
+    before = await _snapshot_visible_state(healthy, database)
     with pytest.raises(RuntimeError):
         await failing.import_snapshot(
-            command("failed", ["feed-old", "feed-new", "feed-fail"], "new-token"),
+            command(
+                "failed",
+                ["feed-old", "feed-new", "feed-fail"],
+                "synthetic-secret-token-never-leak",
+            ),
             "new",
             datetime.now(UTC),
         )
+    after = await _snapshot_visible_state(healthy, database)
+    assert after == before
     latest = await healthy.get_latest_snapshot("board", "synthetic-board")
     assert latest.board_revision == 1
     assert await healthy.get_feed_access_context("feed-new") is None
+    assert await healthy.get_snapshot_by_request_id("failed") is None
     assert (
         await healthy.get_feed_access_context("feed-old")
     ).latest_xsec_token.get_secret_value() == "old-token"
@@ -238,6 +260,8 @@ async def test_empty_and_large_imports_are_synthetic_and_fk_enabled(
         tmp_path: Pytest 临时目录。
     """
     empty = command("empty", [])
+    one = command("one", ["feed-one"])
+    fifty = command("fifty", [f"feed-{index}" for index in range(50)])
     large_items = [f"feed-{index}" for index in range(500)]
     large = command("large", large_items, "synthetic-secret-token-never-leak")
     alternate = command("alternate", large_items, "another-synthetic-token")
@@ -246,10 +270,18 @@ async def test_empty_and_large_imports_are_synthetic_and_fk_enabled(
     empty_snapshot, _ = await repository.import_snapshot(
         empty, collection_fingerprint(empty), datetime.now(UTC)
     )
+    one_snapshot, _ = await repository.import_snapshot(
+        one, collection_fingerprint(one), datetime.now(UTC)
+    )
+    fifty_snapshot, _ = await repository.import_snapshot(
+        fifty, collection_fingerprint(fifty), datetime.now(UTC)
+    )
     large_snapshot, _ = await repository.import_snapshot(
         large, collection_fingerprint(large), datetime.now(UTC)
     )
     assert empty_snapshot.item_count == 0
+    assert one_snapshot.item_count == 1
+    assert fifty_snapshot.item_count == 50
     assert large_snapshot.item_count == 500
     assert len(await repository.list_snapshot_items(large_snapshot.snapshot_id)) == 500
     async with connect(tmp_path / "state.db") as database:
