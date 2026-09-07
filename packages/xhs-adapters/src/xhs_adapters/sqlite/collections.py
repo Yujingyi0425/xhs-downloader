@@ -15,6 +15,7 @@ from .collection_reads import CollectionReadMixin
 from .collection_storage import (
     ensure_collection_foreign_keys,
     initialize_collection_storage,
+    snapshot_from_row,
 )
 from .connection import connect
 
@@ -49,6 +50,17 @@ class SqliteCollectionRepository(CollectionReadMixin):
                     current_items = await self._read_items(
                         database, existing.snapshot_id
                     )
+                    previous = await self._snapshot_before(
+                        database,
+                        existing.source_type,
+                        existing.board_id,
+                        existing.board_revision,
+                    )
+                    previous_items = (
+                        await self._read_items(database, previous.snapshot_id)
+                        if previous
+                        else []
+                    )
                     current_fingerprint = await self._membership_fingerprint(
                         existing.source_type, existing.board_id, current_items
                     )
@@ -60,8 +72,13 @@ class SqliteCollectionRepository(CollectionReadMixin):
                         raise CollectionIdempotencyConflictError(
                             "request_id conflicts with an existing observation"
                         )
+                    result = await self._prepare_result(
+                        existing,
+                        previous_items,
+                        current_items,
+                    )
                     await database.commit()
-                    return existing, CollectionDiff(added=[], removed=[], retained=[])
+                    return result
 
                 previous = await self._latest(
                     database, command.source_type, command.board_id
@@ -112,16 +129,26 @@ class SqliteCollectionRepository(CollectionReadMixin):
                 row = await cursor.fetchone()
                 if row != (len(command.items),):
                     raise RuntimeError("collection membership count mismatch")
-                await database.commit()
-                snapshot = await self._get_by_id(database, snapshot_id)
-                if snapshot is None:
-                    raise RuntimeError("new collection snapshot disappeared")
+                snapshot = CollectionSnapshot(
+                    snapshot_id=snapshot_id,
+                    source_type=command.source_type,
+                    board_id=command.board_id,
+                    board_revision=revision,
+                    request_id=command.request_id,
+                    captured_at=captured_at,
+                    item_count=len(command.items),
+                    fingerprint=fingerprint,
+                )
                 previous_items = (
                     await self._read_items(database, previous.snapshot_id)
                     if previous
                     else []
                 )
-                return snapshot, self._diff(previous_items, command.items)
+                result = await self._prepare_result(
+                    snapshot, previous_items, command.items
+                )
+                await database.commit()
+                return result
             except Exception:
                 await database.rollback()
                 raise
@@ -157,6 +184,19 @@ class SqliteCollectionRepository(CollectionReadMixin):
             await initialize_collection_storage(self._database)
             self._initialized = True
 
+    async def _snapshot_before(
+        self, database, source_type: str, board_id: str, revision: int
+    ):
+        cursor = await database.execute(
+            """
+            SELECT * FROM collection_snapshot
+            WHERE source_type=? AND board_id=? AND board_revision=?
+            """,
+            (source_type, board_id, revision - 1),
+        )
+        row = await cursor.fetchone()
+        return snapshot_from_row(row) if row else None
+
     async def _membership_fingerprint(self, source_type, board_id, items):
         from pydantic import SecretStr
         from xhs_core.domain.collection import (
@@ -190,3 +230,7 @@ class SqliteCollectionRepository(CollectionReadMixin):
             removed=sorted(previous - current),
             retained=sorted(current & previous),
         )
+
+    async def _prepare_result(self, snapshot, previous_items, current_items):
+        """在 COMMIT 前构造完整结果，便于失败时整体 rollback。"""
+        return snapshot, self._diff(previous_items, current_items)
