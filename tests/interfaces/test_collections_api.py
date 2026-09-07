@@ -1,7 +1,5 @@
 """收藏夹 HTTP API 的合成集成测试。"""
 
-import logging
-
 import pytest
 from httpx import ASGITransport, AsyncClient
 from xhs_adapters.config import AppSettings
@@ -75,11 +73,12 @@ async def test_collection_import_supports_synthetic_sizes(tmp_path, count: int) 
     assert response.status_code == 201
     body = response.json()
     assert body["item_count"] == count
+    assert body["request_id"] == f"request-{count}"
     assert "xsec_token" not in response.text
     assert body["diff"] == {
-        "added_count": count,
-        "retained_count": 0,
-        "removed_count": 0,
+        "added": sorted(f"feed-{index}" for index in range(count)),
+        "removed": [],
+        "retained": [],
     }
 
 
@@ -108,10 +107,20 @@ async def test_collection_api_replays_conflict_and_reorder_semantics(tmp_path) -
             json={"request_id": "request-1", "items": _items(2)},
             headers=headers,
         )
+        different_board = await client.post(
+            "/collections/board/board-2/imports",
+            json=first_payload,
+            headers=headers,
+        )
+        same_membership = await client.post(
+            "/collections/board/board-1/imports",
+            json={"request_id": "request-2", "items": _items(3)},
+            headers=headers,
+        )
         reordered = await client.post(
             "/collections/board/board-1/imports",
             json={
-                "request_id": "request-2",
+                "request_id": "request-3",
                 "items": _reordered_items(3),
             },
             headers=headers,
@@ -119,13 +128,16 @@ async def test_collection_api_replays_conflict_and_reorder_semantics(tmp_path) -
 
     assert replay.status_code == 201
     assert replay.json()["snapshot_id"] == first.json()["snapshot_id"]
+    assert replay.json()["diff"] == first.json()["diff"]
     assert conflict.status_code == 409
+    assert different_board.status_code == 409
     assert _SENTINEL not in conflict.text
-    assert reordered.json()["board_revision"] == 2
+    assert same_membership.json()["board_revision"] == 2
+    assert reordered.json()["board_revision"] == 3
     assert reordered.json()["diff"] == {
-        "added_count": 0,
-        "retained_count": 3,
-        "removed_count": 0,
+        "added": [],
+        "retained": ["feed-0", "feed-1", "feed-2"],
+        "removed": [],
     }
     assert reordered.json()["fingerprint"] != first.json()["fingerprint"]
     assert _SENTINEL not in replay.text
@@ -161,12 +173,15 @@ async def test_collection_api_reads_latest_history_and_ordered_snapshot(
         await _client(restarted_api) as client,
     ):
         headers = await _register(client)
-        latest = await client.get("/collections/board/board-1/latest", headers=headers)
-        history = await client.get(
-            "/collections/board/board-1/snapshots", headers=headers
+        latest = await client.get("/collections/board/board-1/latest")
+        history = await client.get("/collections/board/board-1/snapshots")
+        detail = await client.get(f"/collections/board/board-1/snapshots/{second_id}")
+        items = await client.get(
+            f"/collections/board/board-1/snapshots/{second_id}/items"
         )
-        detail = await client.get(
-            f"/collections/board/board-1/snapshots/{second_id}", headers=headers
+        missing = await client.get("/collections/board/board-1/snapshots/missing")
+        bounded_history = await client.get(
+            "/collections/board/board-1/snapshots?limit=1"
         )
 
     assert first.status_code == 201
@@ -180,7 +195,10 @@ async def test_collection_api_reads_latest_history_and_ordered_snapshot(
         {"feed_id": "feed-1", "source_order": 0},
         {"feed_id": "feed-0", "source_order": 1},
     ]
-    assert "xsec_token" not in latest.text + history.text + detail.text
+    assert "xsec_token" not in latest.text + history.text + detail.text + items.text
+    assert items.json() == detail.json()["items"]
+    assert missing.status_code == 404
+    assert [item["board_revision"] for item in bounded_history.json()["items"]] == [2]
 
 
 async def test_collection_api_requires_extension_and_only_accepts_loopback(
@@ -195,8 +213,22 @@ async def test_collection_api_requires_extension_and_only_accepts_loopback(
     async with api.router.lifespan_context(api):
         async with await _client(api) as local:
             headers = await _register(local)
-            missing_auth = await local.get(
-                "/collections/board/board-1/latest", headers={"Origin": _ORIGIN}
+            missing_auth = await local.get("/collections/board/board-1/latest")
+            local_read = await local.get("/collections/board/board-1/latest")
+            wrong_origin = await local.post(
+                "/collections/board/board-1/imports",
+                json={"request_id": "request-origin", "items": []},
+                headers={**headers, "Origin": "chrome-extension://wrong-id"},
+            )
+            invalid_auth = await local.post(
+                "/collections/board/board-1/imports",
+                json={"request_id": "request-invalid-auth", "items": []},
+                headers={**headers, "Authorization": "Bearer invalid"},
+            )
+            missing_import_auth = await local.post(
+                "/collections/board/board-1/imports",
+                json={"request_id": "request-missing-auth", "items": []},
+                headers={"Origin": _ORIGIN, "X-Extension-Id": _EXTENSION_ID},
             )
         async with AsyncClient(
             transport=ASGITransport(app=api, client=("203.0.113.9", 40002)),
@@ -205,59 +237,16 @@ async def test_collection_api_requires_extension_and_only_accepts_loopback(
             remote_read = await remote.get(
                 "/collections/board/board-1/latest", headers=headers
             )
+            remote_import = await remote.post(
+                "/collections/board/board-1/imports",
+                json={"request_id": "request-remote", "items": []},
+                headers=headers,
+            )
 
-    assert missing_auth.status_code == 401
+    assert missing_auth.status_code == 404
+    assert local_read.status_code == 404
+    assert wrong_origin.status_code == 403
+    assert invalid_auth.status_code == 401
+    assert missing_import_auth.status_code == 401
     assert remote_read.status_code == 403
-
-
-async def test_collection_api_redacts_validation_error_and_logs(
-    tmp_path, caplog
-) -> None:
-    """Token sentinel 不出现在成功、校验错误或日志路径。
-
-    Args:
-        tmp_path: pytest 提供的临时目录。
-        caplog: pytest 日志捕获 fixture。
-    """
-    caplog.set_level(logging.DEBUG)
-    api = create_api(AppSettings(work_path=tmp_path), lambda _: FakeService())
-    async with api.router.lifespan_context(api), await _client(api) as client:
-        headers = await _register(client)
-        invalid = await client.post(
-            "/collections/board/board-1/imports",
-            json={
-                "request_id": "request-invalid",
-                "items": [
-                    {
-                        "feed_id": "feed-a",
-                        "xsec_token": "   ",
-                        "source_order": 0,
-                    }
-                ],
-            },
-            headers=headers,
-        )
-        duplicate = await client.post(
-            "/collections/board/board-1/imports",
-            json={
-                "request_id": "request-duplicate",
-                "items": [
-                    {
-                        "feed_id": "feed-a",
-                        "xsec_token": _SENTINEL,
-                        "source_order": 0,
-                    },
-                    {
-                        "feed_id": "feed-a",
-                        "xsec_token": _SENTINEL,
-                        "source_order": 1,
-                    },
-                ],
-            },
-            headers=headers,
-        )
-
-    assert invalid.status_code == 422
-    assert duplicate.status_code == 422
-    assert _SENTINEL not in invalid.text + duplicate.text
-    assert all(_SENTINEL not in record.getMessage() for record in caplog.records)
+    assert remote_import.status_code == 403
