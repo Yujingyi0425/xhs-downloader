@@ -21,7 +21,7 @@ TC2_AUTHORIZED=NO
 
 ### TC2 Collection Persistence
 
-TC2A Persistence Architecture Audit 已完成设计，当前状态：`TC2A=PASS`、`TC2B=PENDING_HUMAN_AUTHORIZATION`。TC2A 只产出审计与设计文档，未实现 production code。后续在人工 Gate 授权后，才可在 `xhs-core` 定义收藏快照/条目端口和状态，在 `xhs-adapters` 增加 SQLite 实现，在 `apps/api` 组合路由，在扩展调用边界提交快照。目标仍是验证幂等、历史快照、事务回滚、重启恢复和 token 脱敏。
+TC2A Persistence Architecture Audit 已完成，TC2B1 Core + SQLite Persistence Implementation 已完成，当前状态：`TC2A=PASS`、`TC2B1=PASS`、`TC2B2=PENDING_HUMAN_AUTHORIZATION`。TC2B1 只实现 `xhs-core` domain/application/port 与 `xhs-adapters` SQLite 持久化，并使用 synthetic tests 验证；未新增 HTTP API、Extension 或 TypeScript contract。后续在人工 Gate 授权后，才可进入 API 实现。目标仍是验证幂等、历史快照、事务回滚、重启恢复和 token 脱敏。
 
 ### TC3 Detail Enrichment
 
