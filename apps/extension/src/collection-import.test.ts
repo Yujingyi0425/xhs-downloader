@@ -4,13 +4,14 @@ import { importCollection, CollectionImportUnauthorizedError } from "./collectio
 import { senderMatchesBoard } from "./collection-import-runner";
 import type { CollectionCaptureResult } from "./collection-controller";
 
-const token = "synthetic-secret-token-never-leak";
-const credential = { extensionId: "synthetic-extension", token, installationId: "synthetic-installation" };
+const xsecSentinel = "synthetic-xsec-secret-never-leak";
+const capabilitySentinel = "synthetic-extension-capability-never-leak";
+const credential = { extensionId: "synthetic-extension", token: capabilitySentinel, installationId: "synthetic-installation" };
 
 function capture(count: number, status: CollectionCaptureResult["status"] = "success"): CollectionCaptureResult {
   const items = new Map(Array.from({ length: count }, (_, index) => [
     `feed-${index}`,
-    { feedId: `feed-${index}`, xsecToken: `${token}-${index}`, title: "hidden", author: "hidden", coverUrl: "hidden" },
+    { feedId: `feed-${index}`, xsecToken: `${xsecSentinel}-${index}`, title: "hidden", author: "hidden", coverUrl: "hidden" },
   ]));
   return { status, boardId: "synthetic-board", uniqueCount: count, items, rounds: 1, elapsedMs: 1, stopReason: status === "success" ? "bottom_stable" : "error" };
 }
@@ -29,6 +30,10 @@ function saved(requestId: string, itemCount: number): object {
 
 describe("TC2B3 collection import contract", () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  it("uses independent collection and capability sentinels", () => {
+    expect(xsecSentinel).not.toBe(capabilitySentinel);
+  });
 
   it.each([0, 1, 50, 500])("maps %i items in capture order", (count) => {
     const observation = createCollectionImportObservation(capture(count));
@@ -74,9 +79,9 @@ describe("TC2B3 collection import contract", () => {
     const [url, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init.body as string);
     expect(url).toBe("http://127.0.0.1:5556/collections/board/synthetic-board/imports");
-    expect(body).toEqual({ request_id: observation.requestId, items: [{ feed_id: "feed-0", xsec_token: `${token}-0`, source_order: 0 }] });
+    expect(body).toEqual({ request_id: observation.requestId, items: [{ feed_id: "feed-0", xsec_token: `${xsecSentinel}-0`, source_order: 0 }] });
     expect(init.credentials).toBe("omit");
-    expect(init.headers).toMatchObject({ Authorization: `Bearer ${token}`, "X-Extension-Id": credential.extensionId });
+    expect(init.headers).toMatchObject({ Authorization: `Bearer ${capabilitySentinel}`, "X-Extension-Id": credential.extensionId });
     expect(init.headers).not.toHaveProperty("Origin");
   });
 
@@ -84,10 +89,11 @@ describe("TC2B3 collection import contract", () => {
     "classifies HTTP %i without exposing response data",
     async (status, kind) => {
       const observation = createCollectionImportObservation(capture(1));
-      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ detail: token }, status)));
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({ detail: `${xsecSentinel} ${capabilitySentinel}` }, status)));
       const result = await importCollection("http://service", credential, observation.payload);
       expect(result).toMatchObject({ ok: false, kind });
-      expect(result.message).not.toContain(token);
+      expect(result.message).not.toContain(xsecSentinel);
+      expect(result.message).not.toContain(capabilitySentinel);
     },
   );
 
