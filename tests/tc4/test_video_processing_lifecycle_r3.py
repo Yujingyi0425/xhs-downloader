@@ -130,6 +130,8 @@ async def test_service_restart_recovers_running_and_fences_stale_worker(
     results = await service.process_snapshot("snapshot")
     assert results[0].status is VideoProcessingStatus.SUCCEEDED, events
     assert results[0].attempt_count == 2
+    assert "transcribe" not in events
+    assert "recognize" not in events
     authoritative = await reopened.get("snapshot", "feed")
     assert authoritative == results[0]
     assert results[0].feed_id == "feed"
