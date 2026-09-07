@@ -1,6 +1,5 @@
 """TC4 视频内容处理应用服务。"""
 
-from asyncio import to_thread
 from hashlib import sha256
 
 from xhs_core.domain import (
@@ -31,9 +30,9 @@ class VideoProcessingService:
         videos: VideoContentRepository,
         media: VideoMediaAcquirer,
         artifacts: VideoArtifactStore,
-        inspector: VideoInspector,
-        transcriber: VideoTranscriber,
-        ocr: VideoOcr,
+        inspector: VideoInspector | None = None,
+        transcriber: VideoTranscriber | None = None,
+        ocr: VideoOcr | None = None,
     ) -> None:
         self._collections = collections
         self._enrichments = enrichments
@@ -140,16 +139,9 @@ class VideoProcessingService:
             relative_path, digest, size = await self._artifacts.save(
                 snapshot_id, feed_id, locator
             )
-            path = (
-                self._artifacts.resolve_path(relative_path)
-                if hasattr(self._artifacts, "resolve_path")
-                else relative_path
-            )
-            duration, frames = await to_thread(self._inspector.inspect, path)
             content = content.model_copy(
                 update={
                     "acquisition_status": VideoStageStatus.SUCCEEDED,
-                    "duration_seconds": duration,
                     "artifact": VideoArtifact(
                         local_video_available=True,
                         relative_path=relative_path,
@@ -170,38 +162,27 @@ class VideoProcessingService:
             return await self._fail_stage(
                 content, "acquisition_status", "media_download_failed"
             )
-        try:
-            transcript = await to_thread(self._transcriber.transcribe, path)
+        if not keep_source and hasattr(self._artifacts, "discard"):
+            await self._artifacts.discard(relative_path)
             content = content.model_copy(
                 update={
-                    "stt_status": VideoStageStatus.SUCCEEDED,
-                    "transcript": transcript,
+                    "artifact": content.artifact.model_copy(
+                        update={
+                            "local_video_available": False,
+                            "relative_path": None,
+                        }
+                    )
                 }
             )
-        except Exception:
-            return await self._fail_stage(content, "stt_status", "stt_failed")
-        try:
-            ocr = await to_thread(self._ocr.recognize, frames)
-            content = content.model_copy(
-                update={"ocr_status": VideoStageStatus.SUCCEEDED, "ocr": ocr}
+        return await self._persist(
+            content.model_copy(
+                update={
+                    "status": VideoProcessingStatus.SUCCEEDED,
+                    "stt_status": VideoStageStatus.SKIPPED,
+                    "ocr_status": VideoStageStatus.SKIPPED,
+                }
             )
-            if not keep_source and hasattr(self._artifacts, "discard"):
-                await self._artifacts.discard(relative_path)
-                content = content.model_copy(
-                    update={
-                        "artifact": content.artifact.model_copy(
-                            update={
-                                "local_video_available": False,
-                                "relative_path": None,
-                            }
-                        )
-                    }
-                )
-            return await self._persist(
-                content.model_copy(update={"status": VideoProcessingStatus.SUCCEEDED})
-            )
-        except Exception:
-            return await self._fail_stage(content, "ocr_status", "ocr_failed")
+        )
 
     async def _fail_stage(self, content: CollectionVideoContent, stage: str, code: str):
         """记录可重试阶段失败并保留已完成的部分结果。"""

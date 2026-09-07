@@ -23,9 +23,6 @@ from xhs_adapters.sqlite import (
     SqliteTaskRepository,
 )
 from xhs_adapters.video import (
-    FasterWhisperTranscriber,
-    PaddleOcrRecognizer,
-    PyAvVideoInspector,
     SafeVideoArtifactStore,
 )
 from xhs_core.application import (
@@ -124,9 +121,6 @@ def create_api_dependencies(
             / "video-content",
             video_gateway,
         ),
-        PyAvVideoInspector(),
-        FasterWhisperTranscriber(),
-        PaddleOcrRecognizer(),
     )
     return ApiDependencies(
         browser=browser,
