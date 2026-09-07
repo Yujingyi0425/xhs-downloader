@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 from pydantic import SecretStr, ValidationError
+from xhs_adapters.sqlite.collection_storage import ensure_collection_foreign_keys
 from xhs_adapters.sqlite.collections import SqliteCollectionRepository
+from xhs_adapters.sqlite.connection import connect
 from xhs_core.domain.collection import (
     CollectionImportCommand,
     CollectionImportItem,
@@ -224,3 +226,33 @@ def test_source_order_and_token_validation_redaction() -> None:
             xsec_token=SecretStr("   "),
             source_order=0,
         )
+
+
+@pytest.mark.asyncio
+async def test_empty_and_large_imports_are_synthetic_and_fk_enabled(
+    tmp_path: Path,
+) -> None:
+    """验证 0、1、500 边界、指纹独立性和 FK 状态。
+
+    Args:
+        tmp_path: Pytest 临时目录。
+    """
+    empty = command("empty", [])
+    large_items = [f"feed-{index}" for index in range(500)]
+    large = command("large", large_items, "synthetic-secret-token-never-leak")
+    alternate = command("alternate", large_items, "another-synthetic-token")
+    assert collection_fingerprint(large) == collection_fingerprint(alternate)
+    repository = SqliteCollectionRepository(tmp_path / "state.db")
+    empty_snapshot, _ = await repository.import_snapshot(
+        empty, collection_fingerprint(empty), datetime.now(UTC)
+    )
+    large_snapshot, _ = await repository.import_snapshot(
+        large, collection_fingerprint(large), datetime.now(UTC)
+    )
+    assert empty_snapshot.item_count == 0
+    assert large_snapshot.item_count == 500
+    assert len(await repository.list_snapshot_items(large_snapshot.snapshot_id)) == 500
+    async with connect(tmp_path / "state.db") as database:
+        await ensure_collection_foreign_keys(database)
+        cursor = await database.execute("PRAGMA foreign_keys")
+        assert await cursor.fetchone() == (1,)
