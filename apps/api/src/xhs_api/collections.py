@@ -4,7 +4,14 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import ValidationError
-from xhs_core.application import CollectionImportService, ExtensionCredentialService
+from xhs_core.application import (
+    CollectionDetailEnrichmentOptions,
+    CollectionDetailEnrichmentService,
+    CollectionEnrichmentJobCoordinator,
+    CollectionImportService,
+    ExtensionCredentialService,
+    UnknownSnapshotError,
+)
 from xhs_core.domain import (
     CollectionIdempotencyConflictError,
     CollectionImportCommand,
@@ -15,6 +22,10 @@ from xhs_core.domain import (
 
 from .collection_models import (
     CollectionDiffResponse,
+    CollectionEnrichAcceptedResponse,
+    CollectionEnrichmentItemResponse,
+    CollectionEnrichmentSummaryResponse,
+    CollectionEnrichRequest,
     CollectionImportItemRequest,
     CollectionImportRequest,
     CollectionSnapshotDetailResponse,
@@ -136,6 +147,68 @@ def create_collection_router(
             )
             for item in items
         ]
+
+    return router
+
+
+def create_collection_enrichment_router(
+    service: CollectionDetailEnrichmentService,
+    coordinator: CollectionEnrichmentJobCoordinator,
+) -> APIRouter:
+    """创建只允许本机访问的详情 enrichment 管理路由。
+
+    Args:
+        service: 收藏详情 enrichment 应用服务。
+        coordinator: 进程内批次任务协调器。
+
+    Returns:
+        可挂载到主应用的管理路由。
+    """
+    router = APIRouter(prefix="/xhs/collections", tags=["收藏详情 enrichment"])
+
+    @router.post(
+        "/snapshots/{snapshot_id}/enrich",
+        response_model=CollectionEnrichAcceptedResponse,
+        status_code=202,
+    )
+    async def start_enrichment(
+        snapshot_id: str, payload: CollectionEnrichRequest, request: Request
+    ) -> CollectionEnrichAcceptedResponse:
+        _require_management_read(request)
+        try:
+            await service.list_snapshot_enrichments(snapshot_id)
+        except UnknownSnapshotError as error:
+            raise HTTPException(status_code=404, detail="收藏夹快照不存在") from error
+        started = coordinator.start(
+            snapshot_id,
+            lambda: service.enrich_snapshot(
+                snapshot_id, CollectionDetailEnrichmentOptions(**payload.model_dump())
+            ),
+        )
+        return CollectionEnrichAcceptedResponse(
+            snapshot_id=snapshot_id,
+            job_status="started" if started else "already_running",
+        )
+
+    @router.get(
+        "/snapshots/{snapshot_id}/enrichments",
+        response_model=CollectionEnrichmentSummaryResponse,
+    )
+    async def get_enrichments(
+        snapshot_id: str, request: Request
+    ) -> CollectionEnrichmentSummaryResponse:
+        _require_management_read(request)
+        try:
+            summary = await service.list_snapshot_enrichments(snapshot_id)
+        except UnknownSnapshotError as error:
+            raise HTTPException(status_code=404, detail="收藏夹快照不存在") from error
+        return CollectionEnrichmentSummaryResponse(
+            **summary.model_dump(exclude={"items"}),
+            items=[
+                CollectionEnrichmentItemResponse(**item.model_dump())
+                for item in summary.items
+            ],
+        )
 
     return router
 

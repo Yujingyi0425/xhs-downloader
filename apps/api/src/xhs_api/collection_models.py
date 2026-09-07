@@ -3,7 +3,11 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
-from xhs_core.domain import CollectionStatus
+from xhs_core.domain import (
+    CollectionEnrichmentStatus,
+    CollectionFeedDetail,
+    CollectionStatus,
+)
 
 
 class CollectionImportItemRequest(BaseModel):
@@ -88,3 +92,48 @@ class CollectionSnapshotDetailResponse(CollectionSnapshotResponse):
     """带有序 membership 的不含 token 的快照详情。"""
 
     items: list[CollectionSnapshotItemResponse]
+
+
+class CollectionEnrichRequest(BaseModel):
+    """收藏详情 enrichment 的本机管理请求。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    comment_limit: int = Field(default=10, ge=0, le=100)
+    include_replies: bool = False
+    reply_limit: int = Field(default=10, ge=0, le=100)
+    limit: int | None = Field(default=None, ge=1, le=500)
+
+
+class CollectionEnrichmentItemResponse(BaseModel):
+    """收藏详情 enrichment 的安全条目响应。"""
+
+    feed_id: str
+    source_order: int
+    status: CollectionEnrichmentStatus
+    attempt_count: int
+    last_error_code: str | None = None
+    detail: CollectionFeedDetail | None = None
+
+
+class CollectionEnrichmentSummaryResponse(BaseModel):
+    """收藏详情 enrichment 的安全批次响应。"""
+
+    snapshot_id: str
+    total: int
+    succeeded: int
+    already_succeeded: int
+    failed_retryable: int
+    failed_terminal: int
+    needs_reimport: int
+    needs_review: int
+    running_skipped: int
+    concurrent_skipped: int
+    items: list[CollectionEnrichmentItemResponse]
+
+
+class CollectionEnrichAcceptedResponse(BaseModel):
+    """后台 enrichment 触发响应。"""
+
+    snapshot_id: str
+    job_status: str

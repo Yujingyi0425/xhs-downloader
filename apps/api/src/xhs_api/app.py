@@ -12,6 +12,7 @@ from xhs_adapters.config import AppSettings
 from xhs_adapters.logging import configure_logging
 from xhs_core.application import (
     BrowserReadinessProbe,
+    CollectionEnrichmentJobCoordinator,
     CollectionService,
     DownloadService,
     DownloadTaskCoordinator,
@@ -23,7 +24,7 @@ from .browser import create_browser_router
 from .browser_operations import create_browser_operation_router
 from .capability_reads import create_capability_read_router
 from .capability_runtime import create_browser_readiness
-from .collections import create_collection_router
+from .collections import create_collection_enrichment_router, create_collection_router
 from .error_handlers import register_exception_handlers
 from .extension import create_extension_router
 from .login import create_login_router
@@ -73,6 +74,7 @@ def create_api(
         resolved_settings_file,
         settings_override_fields,
     )
+    enrichment_jobs = CollectionEnrichmentJobCoordinator()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -87,6 +89,7 @@ def create_api(
             app.state.collection = CollectionService(service, dependencies.posts)
             async with AsyncExitStack() as lifecycle:
                 lifecycle.push_async_callback(tasks.close)
+                lifecycle.push_async_callback(enrichment_jobs.close)
                 lifecycle.push_async_callback(dependencies.publication.scheduler.close)
                 lifecycle.push_async_callback(dependencies.browser.managed.close)
                 lifecycle.push_async_callback(dependencies.browser.worker.close)
@@ -185,6 +188,14 @@ def create_api(
                 collection_import,
                 collection_repository,
                 dependencies.publication.credentials,
+            )
+        )
+    collection_enrichment = getattr(dependencies, "collection_enrichment", None)
+    if collection_enrichment is not None:
+        api.include_router(
+            create_collection_enrichment_router(
+                collection_enrichment,
+                enrichment_jobs,
             )
         )
     api.include_router(

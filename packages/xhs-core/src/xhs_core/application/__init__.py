@@ -18,6 +18,13 @@ from .browser_task_ephemeral import (
 from .browser_tasks import BrowserTaskService
 from .capability_router import CapabilityRouter
 from .collection import CollectionService
+from .collection_enrichment import (
+    CollectionDetailEnrichmentOptions,
+    CollectionDetailEnrichmentService,
+    CollectionEnrichmentSummary,
+    UnknownSnapshotError,
+)
+from .collection_enrichment_jobs import CollectionEnrichmentJobCoordinator
 from .collection_import import CollectionImportService
 from .download import DownloadService
 from .download_tasks import DownloadTaskCoordinator
@@ -46,6 +53,10 @@ __all__ = [
     "BrowserTaskEphemeralInputChannel",
     "BrowserTaskService",
     "CapabilityRouter",
+    "CollectionDetailEnrichmentOptions",
+    "CollectionDetailEnrichmentService",
+    "CollectionEnrichmentJobCoordinator",
+    "CollectionEnrichmentSummary",
     "CollectionImportService",
     "CollectionService",
     "DownloadService",
@@ -63,4 +74,5 @@ __all__ = [
     "PublicationExecutionService",
     "PublicationScheduler",
     "PublicationTaskService",
+    "UnknownSnapshotError",
 ]
