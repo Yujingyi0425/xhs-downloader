@@ -15,16 +15,23 @@ POST /collections/{source_type}/{board_id}/imports
 GET /collections/{source_type}/{board_id}/latest
 GET /collections/{source_type}/{board_id}/snapshots
 GET /collections/{source_type}/{board_id}/snapshots/{snapshot_id}
+GET /collections/{source_type}/{board_id}/snapshots/{snapshot_id}/items
 API_ROUTER_REGISTERED=PASS
 PRODUCTION_DEPENDENCY_WIRING=PASS
 IMPORT_EXT_AUTH=PASS
-READ_LOCALHOST_ONLY=PASS
+READ_MANAGEMENT_LOOPBACK_BOUNDARY=PASS
 PUBLIC_ACCESS_CONTEXT_ENDPOINT=NONE
+IMPORT_EXTENSION_AUTH=PASS
+IMPORT_MISSING_BEARER_401=PASS
+IMPORT_INVALID_BEARER_401=PASS
+IMPORT_REMOTE_403=PASS
+IMPORT_WRONG_IDENTITY_REJECTED=PASS
+READ_REMOTE_403=PASS
 ```
 
-Import path identity comes only from `source_type` and `board_id`; the body accepts only `request_id` and sensitive item input. Public response DTOs are structurally separate and contain no `xsec_token`, `CollectionFeedAccessContext`, or token query field.
+Import path identity comes only from `source_type` and `board_id`; the body accepts only `request_id` and sensitive item input. Public response DTOs are structurally separate and contain no `xsec_token`, `CollectionFeedAccessContext`, or token query field. Import uses loopback plus Extension identity and Bearer capability authentication; reads use the existing localhost management boundary and do not require an Extension credential.
 
-All collection endpoints reuse the existing Extension capability authentication, which requires a valid registered extension credential and a loopback client. Invalid requests return fixed, token-free error details.
+Import reuses the existing Extension capability authentication, which requires a valid registered extension credential and a loopback client. Read endpoints reuse the existing localhost management boundary. Invalid requests return fixed, token-free error details.
 
 ## Synthetic API result
 
@@ -33,14 +40,21 @@ IMPORT_EMPTY=PASS
 IMPORT_1=PASS
 IMPORT_50=PASS
 IMPORT_500=PASS
+IMPORT_501_REJECT=PASS
 IDEMPOTENT_REPLAY=PASS
 IDEMPOTENCY_CONFLICT_409=PASS
+IDEMPOTENCY_DIFFERENT_MEMBERSHIP_409=PASS
+IDEMPOTENCY_DIFFERENT_BOARD_409=PASS
+NEW_REQUEST_SAME_MEMBERSHIP_NEW_REVISION=PASS
 REORDER_SEMANTICS=PASS
 RESTART_PERSISTENCE=PASS
 LATEST_READ=PASS
 HISTORY_READ=PASS
 SNAPSHOT_READ=PASS
 ITEMS_ORDERED=PASS
+MISSING_SNAPSHOT_404=PASS
+HISTORY_NEWEST_FIRST=PASS
+HISTORY_LIMIT_BOUNDED=PASS
 ```
 
 ## Token safety result
@@ -48,8 +62,13 @@ ITEMS_ORDERED=PASS
 ```text
 TOKEN_SUCCESS_RESPONSE_REDACTION=PASS
 TOKEN_READ_RESPONSE_REDACTION=PASS
+TOKEN_PRE_ROUTE_VALIDATION_REDACTION=PASS
 TOKEN_VALIDATION_ERROR_REDACTION=PASS
 TOKEN_EXCEPTION_LOG_REDACTION=PASS
+TOKEN_CONFLICT_REDACTION=PASS
+TOKEN_INJECTED_FAILURE_REDACTION=PASS
+INVALID_REQUEST_DB_UNCHANGED=PASS
+TOKEN_ONLY_RETRY_SEMANTICS=PASS
 ```
 
 The actual sentinel `synthetic-secret-token-never-leak` is exercised in API retry and validation paths; it does not occur in public responses or captured log messages.
@@ -63,6 +82,8 @@ The actual sentinel `synthetic-secret-token-never-leak` is exercised in API retr
 | latest/history/snapshot reads, restart-shaped persistence and ordered items | `tests/interfaces/test_collections_api.py::test_collection_api_reads_latest_history_and_ordered_snapshot` |
 | extension authentication and loopback boundary | `tests/interfaces/test_collections_api.py::test_collection_api_requires_extension_and_only_accepts_loopback` |
 | validation and log redaction | `tests/interfaces/test_collections_api.py::test_collection_api_redacts_validation_error_and_logs` |
+| pre-route 501/extra/malformed/order validation redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_pre_route_validation` |
+| injected failure response and log redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_injected_failure` |
 
 ## Scope
 
@@ -82,8 +103,8 @@ NEW_DEPENDENCIES=NO
 RUFF_CHECK=PASS
 RUFF_FORMAT=PASS
 PYTEST=PASS
-PYTEST_TOTAL=653
+PYTEST_TOTAL=658
 PYTEST_FAILED=0
-COVERAGE=91.30%
+COVERAGE=91.33%
 COVERAGE_GATE=PASS (>=85%)
 ```
