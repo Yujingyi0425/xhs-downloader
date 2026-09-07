@@ -7,6 +7,7 @@ from xhs_core.domain import (
     CollectionEnrichmentStatus,
     CollectionRepository,
     CollectionVideoContent,
+    VideoArtifact,
     VideoArtifactStore,
     VideoContentRepository,
     VideoInspector,
@@ -134,7 +135,7 @@ class VideoProcessingService:
                     content, "acquisition_status", "access_context_missing"
                 )
             locator = await self._media.acquire(
-                feed_id, access.xsec_token.get_secret_value(), request_id
+                feed_id, access.latest_xsec_token.get_secret_value(), request_id
             )
             relative_path, digest, size = await self._artifacts.save(
                 snapshot_id, feed_id, locator
@@ -149,12 +150,12 @@ class VideoProcessingService:
                 update={
                     "acquisition_status": VideoStageStatus.SUCCEEDED,
                     "duration_seconds": duration,
-                    "artifact": {
-                        "local_video_available": True,
-                        "relative_path": relative_path,
-                        "sha256": digest,
-                        "size": size,
-                    },
+                    "artifact": VideoArtifact(
+                        local_video_available=True,
+                        relative_path=relative_path,
+                        sha256=digest,
+                        size=size,
+                    ),
                 }
             )
         except LookupError:

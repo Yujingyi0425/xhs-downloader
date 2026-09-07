@@ -1,7 +1,7 @@
 """共享的断点流式下载与安全原子落盘 primitive。"""
 
 import os
-from asyncio import to_thread
+from asyncio import sleep, to_thread
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from hashlib import sha256
@@ -87,6 +87,62 @@ async def stream_to_atomic_file(
             await to_thread(part.unlink, True)
             await to_thread(marker.unlink, True)
         raise
+
+
+async def retry_stream_to_atomic_file(
+    gateway,
+    url: str,
+    part: Path,
+    marker: Path,
+    target: Path | Callable[[Mapping[str, str]], Path],
+    *,
+    max_attempts: int,
+    chunk_size: int = 1024 * 1024,
+    on_chunk: Callable[[int], Awaitable[None]] | None = None,
+    cleanup_on_exhaustion: bool = False,
+) -> StreamDownloadResult:
+    """以有限次数重试共享流式下载 primitive。
+
+    Args:
+        gateway: 提供带可选 Range 请求头的异步流端口。
+        url: 短期媒体地址，仅在本次下载中使用。
+        part: 可续传的临时文件路径。
+        marker: 与临时文件配对的短期 URL 指纹路径。
+        target: 固定目标路径或根据响应头生成目标路径的函数。
+        max_attempts: 包含首次尝试在内的最大尝试次数。
+        chunk_size: 每次读取的最大字节数。
+        on_chunk: 每写入一块后调用的异步进度回调。
+        cleanup_on_exhaustion: 耗尽后是否清理可续传状态。
+
+    Returns:
+        共享下载 primitive 的成功结果。
+
+    Raises:
+        DownloadError: 可重试错误耗尽。
+        InvalidPartialContentError: 续传位置被远端拒绝，不重试。
+    """
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be positive")
+    for attempt in range(max_attempts):
+        try:
+            return await stream_to_atomic_file(
+                gateway,
+                url,
+                part,
+                marker,
+                target,
+                chunk_size=chunk_size,
+                on_chunk=on_chunk,
+            )
+        except InvalidPartialContentError:
+            raise
+        except (DownloadError, OSError, TimeoutError):
+            if attempt + 1 >= max_attempts:
+                if cleanup_on_exhaustion:
+                    await to_thread(part.unlink, True)
+                    await to_thread(marker.unlink, True)
+                raise
+            await sleep(min(2**attempt, 4))
 
 
 def _hash_and_size(path: Path) -> tuple[str, int]:

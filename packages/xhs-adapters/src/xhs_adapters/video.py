@@ -13,7 +13,7 @@ from xhs_core.domain import (
     VideoTranscriptSegment,
 )
 
-from .filesystem.streaming import stream_to_atomic_file
+from .filesystem.streaming import retry_stream_to_atomic_file
 
 
 class SafeVideoArtifactStore:
@@ -45,13 +45,14 @@ class SafeVideoArtifactStore:
         target = target_dir / "source.mp4"
         part = target_dir / ".source.mp4.part"
         marker = target_dir / ".source.mp4.part.url"
-        result = await stream_to_atomic_file(
+        result = await retry_stream_to_atomic_file(
             self._gateway,
             str(video.url),
             part,
             marker,
             target,
-            cleanup_on_error=True,
+            cleanup_on_exhaustion=True,
+            max_attempts=3,
         )
         return str(result.target.relative_to(self._root)), result.sha256, result.size
 

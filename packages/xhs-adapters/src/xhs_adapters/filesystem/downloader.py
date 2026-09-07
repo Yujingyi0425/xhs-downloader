@@ -19,7 +19,7 @@ from xhs_core.domain.ports import PageGateway
 from xhs_adapters.config import AppSettings
 
 from .progress import ProgressCallback, ProgressTracker
-from .streaming import stream_to_atomic_file
+from .streaming import retry_stream_to_atomic_file
 
 
 class FileDownloader:
@@ -142,7 +142,7 @@ class FileDownloader:
         async with self._semaphore:
             part, marker = self._partial_paths(detail, resource)
             try:
-                result = await stream_to_atomic_file(
+                result = await retry_stream_to_atomic_file(
                     self._gateway,
                     resource.url,
                     part,
@@ -158,6 +158,7 @@ class FileDownloader:
                     ),
                     chunk_size=self._settings.chunk,
                     on_chunk=tracker.advance,
+                    max_attempts=1,
                 )
                 await tracker.declare_total(
                     _content_length(result.headers.get("Content-Length"))
