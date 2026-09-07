@@ -29,7 +29,9 @@ TC2A Persistence Architecture Audit 已完成，TC2B1 Core + SQLite Persistence 
 
 ### TC4 Media Acquisition
 
-当前 TC4-MVP-B 已完成 transient media acquisition、共享 streaming downloader、Range resume、bounded retry、安全本地 artifact、SHA-256/size、atomic finalize、`collection_video_content` persistence、processing lifecycle、restart recovery、attempt CAS、stale-worker fencing 和 TC4-specific secret absence synthetic closure。TC4 不要求 OCR 或 export；真实媒体 canary 仍等待人工 Gate。
+阶段合同：从 `FeedDetailResult` / enrichment 通过显式 mapper 转换为可下载的 `WorkDetail` / `MediaResource`，复用 `DownloadTaskCoordinator`、`FileDownloader`、fingerprint、SHA-256、Range resume 和 atomic completion；单媒体失败不得把整体标记为 ready。
+
+当前进度：TC4-MVP-B 的视频 artifact、共享 streaming primitive、retry/resume、processing lifecycle、restart recovery、attempt CAS 和 secret-boundary synthetic work 已完成部分实现，但 generic collection media acquisition 与 canonical `WorkDetail` path 仍需 reconciliation；真实媒体 canary 尚未授权。
 
 ### TC5 Video Preprocessing
 
@@ -37,7 +39,9 @@ TC5 拥有 FFmpeg/FFprobe、STT、音频抽取和关键帧处理。当前已完�
 
 ### TC6 Analysis Export
 
-从持久化状态生成稳定排序的 `manifest.json`、`notes.jsonl`、`summary_input.md` 和每笔记目录；导出前做敏感字段/URL 清洗，纯规则标签命名为 `suggested_tags`。TC4 synthetic export-v2、最终 export source order 与 export secret redaction 均延期至 TC6，不在 TC4 重复实现。
+阶段合同：从持久化状态生成稳定排序的 `manifest.json`、`notes.jsonl`、`summary_input.md` 和每笔记目录；导出前做敏感字段/URL 清洗，纯规则标签命名为 `suggested_tags`。
+
+当前进度：TC4 synthetic export-v2、最终 export source order 与 export secret redaction 尚未实现，均保留给 TC6。
 
 ### TC7 WebUI
 
