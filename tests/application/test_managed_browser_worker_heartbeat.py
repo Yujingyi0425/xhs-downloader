@@ -131,7 +131,7 @@ def _services(
 ) -> tuple[BrowserTaskService, _RecordingExecution]:
     database = path.joinpath("state.db")
     repository = SqliteBrowserTaskRepository(database)
-    execution = BrowserExecutionService(repository, lease_seconds=0.09)
+    execution = BrowserExecutionService(repository, lease_seconds=0.5)
     return (
         BrowserTaskService(repository),
         _RecordingExecution(
@@ -186,7 +186,7 @@ async def test_slow_managed_task_keeps_lease_until_success(tmp_path: Path) -> No
         tmp_path: Pytest 提供的临时目录。
     """
     tasks, execution = _services(tmp_path)
-    executor = _SlowExecutor(delay=0.24)
+    executor = _SlowExecutor(delay=1.2)
     task = await tasks.submit(
         BrowserTaskKind.CHECK_LOGIN_STATUS,
         {},

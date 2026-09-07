@@ -55,7 +55,10 @@ def test_headless_wins_over_offscreen() -> None:
 def test_profile_stays_isolated_and_debugging_is_loopback_only() -> None:
     """无论窗口怎么显示, 专用目录与回环调试端口都不能变。"""
     for command in (_command(), _command(headless=True), _command(offscreen=True)):
-        assert "--user-data-dir=/synthetic/profile" in command
+        profile_arg = next(
+            item for item in command if item.startswith("--user-data-dir=")
+        )
+        assert Path(profile_arg.partition("=")[2]) == Path("/synthetic/profile")
         assert "--remote-debugging-address=127.0.0.1" in command
 
 
