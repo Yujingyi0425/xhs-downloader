@@ -29,15 +29,15 @@ TC2A Persistence Architecture Audit 已完成，TC2B1 Core + SQLite Persistence 
 
 ### TC4 Media Acquisition
 
-先实现并测试 `FeedDetailResult` 到可下载媒体/`WorkDetail` 的显式转换，再复用 `DownloadTaskCoordinator`、`FileDownloader`、指纹、SHA-256、续传和原子完成。单媒体失败不得标为整体 ready。
+当前 TC4-MVP-B 已完成 transient media acquisition、共享 streaming downloader、Range resume、bounded retry、安全本地 artifact、SHA-256/size、atomic finalize、`collection_video_content` persistence、processing lifecycle、restart recovery、attempt CAS、stale-worker fencing 和 TC4-specific secret absence synthetic closure。TC4 不要求 OCR 或 export；真实媒体 canary 仍等待人工 Gate。
 
 ### TC5 Video Preprocessing
 
-增加外部 FFmpeg/FFprobe 检测、音频抽取、可替换 STT provider、转录 JSON/TXT 和限量关键帧。缺失依赖返回 `NOT_CONFIGURED`，不让 Collector 崩溃；不做 OCR。
+TC5 拥有 FFmpeg/FFprobe、STT、音频抽取和关键帧处理。当前已完成的 Whisper 本地 synthetic runtime 属于 TC5 prework；OCR 不属于 TC5 baseline，Windows PaddleOCR inference limitation 记录为可选未来能力。
 
 ### TC6 Analysis Export
 
-从持久化状态生成稳定排序的 `manifest.json`、`notes.jsonl`、`summary_input.md` 和每笔记目录；导出前做敏感字段/URL 清洗，纯规则标签命名为 `suggested_tags`。
+从持久化状态生成稳定排序的 `manifest.json`、`notes.jsonl`、`summary_input.md` 和每笔记目录；导出前做敏感字段/URL 清洗，纯规则标签命名为 `suggested_tags`。TC4 synthetic export-v2、最终 export source order 与 export secret redaction 均延期至 TC6，不在 TC4 重复实现。
 
 ### TC7 WebUI
 
