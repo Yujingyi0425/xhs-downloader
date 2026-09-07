@@ -1,10 +1,16 @@
 import type { CollectionCaptureController, CollectionCaptureResult } from "./collection-controller";
 import { sanitizeCollectionReason } from "./collection-controller";
+import { createCollectionImportObservation } from "./collection-import-orchestration";
+import type {
+  CollectionImportObservation,
+  CollectionImportResponse,
+} from "./collection-import-types";
 
 /** 收藏夹扫描面板，只展示状态、轮次和数量，不展示条目字段。 */
 export function createCollectionPanel(
   document: Document,
   controllerFactory: (onProgress: (count: number, round: number) => void) => CollectionCaptureController,
+  onImport?: (observation: CollectionImportObservation) => Promise<CollectionImportResponse>,
 ): { toggle(): void; close(): void; getRootForTest(): ShadowRoot } {
   const host = document.createElement("div");
   host.id = "xhs-collection-extension";
@@ -28,15 +34,26 @@ export function createCollectionPanel(
     panel = document.createElement("aside");
     panel.innerHTML = `<h2>小红书旅行收藏夹</h2><p data-status>尚未扫描</p><p data-progress></p><button data-start>扫描当前收藏夹</button><button class="secondary" data-close>关闭</button>`;
     root.append(panel);
-    const current: PanelSession = { panel, controller: null, closed: false };
+    const current: PanelSession = {
+      panel,
+      controller: null,
+      closed: false,
+      importInFlight: false,
+      importState: "idle",
+    };
     session = current;
     const status = panel.querySelector<HTMLElement>("[data-status]")!;
     const progress = panel.querySelector<HTMLElement>("[data-progress]")!;
     panel.querySelector("[data-close]")?.addEventListener("click", close);
     panel.querySelector("[data-start]")?.addEventListener("click", () => {
       const start = current.panel.querySelector<HTMLButtonElement>("[data-start]");
-      if (!start || current.closed || current.controller) return;
+      if (!start || current.closed || current.controller || current.importInFlight) return;
+      if (current.observation && current.importState === "retryable" && onImport) {
+        void submitImport(current, start, status, progress, current.observation, onImport);
+        return;
+      }
       start.disabled = true;
+      start.textContent = "扫描中";
       status.textContent = "正在扫描";
       const controller = controllerFactory((count, round) => {
         if (current.closed || session !== current) return;
@@ -46,7 +63,21 @@ export function createCollectionPanel(
       current.controller = controller;
       void controller.start()
         .then((result) => {
-          if (!current.closed && session === current) renderResult(status, progress, start, result);
+          if (current.closed || session !== current) return;
+          if (result.status !== "success" || !result.boardId || !onImport) {
+            renderScanResult(status, progress, start, result);
+            return;
+          }
+          try {
+            const observation = createCollectionImportObservation(result);
+            current.observation = observation;
+            void submitImport(current, start, status, progress, observation, onImport);
+          } catch (error) {
+            current.importState = "terminal";
+            start.disabled = false;
+            start.textContent = "重新扫描";
+            status.textContent = error instanceof Error ? error.message : "扫描结果无法保存";
+          }
         })
         .finally(() => {
           if (session === current) current.controller = null;
@@ -61,10 +92,14 @@ interface PanelSession {
   panel: HTMLElement;
   controller: CollectionCaptureController | null;
   closed: boolean;
+  observation?: CollectionImportObservation;
+  importInFlight: boolean;
+  importState: "idle" | "retryable" | "terminal" | "saved";
 }
 
-function renderResult(status: HTMLElement, progress: HTMLElement, start: HTMLButtonElement, result: CollectionCaptureResult): void {
+function renderScanResult(status: HTMLElement, progress: HTMLElement, start: HTMLButtonElement, result: CollectionCaptureResult): void {
   start.disabled = false;
+  start.textContent = "重新扫描";
   if (result.status === "success") {
     status.textContent = `扫描完成，共发现 ${result.uniqueCount} 条唯一笔记`;
     progress.textContent = "本阶段结果尚未保存到本地服务";
@@ -72,5 +107,49 @@ function renderResult(status: HTMLElement, progress: HTMLElement, start: HTMLBut
     status.textContent = `扫描未完成：${sanitizeCollectionReason(result.stopReason)}`;
   } else {
     status.textContent = `扫描未完成：${sanitizeCollectionReason(result.stopReason)}`;
+  }
+}
+
+async function submitImport(
+  current: PanelSession,
+  start: HTMLButtonElement,
+  status: HTMLElement,
+  progress: HTMLElement,
+  observation: CollectionImportObservation,
+  onImport: (observation: CollectionImportObservation) => Promise<CollectionImportResponse>,
+): Promise<void> {
+  current.importInFlight = true;
+  start.disabled = true;
+  start.textContent = "保存中";
+  status.textContent = "正在保存到本地服务";
+  try {
+    const response = await onImport(observation);
+    if (current.closed) return;
+    current.importInFlight = false;
+    start.disabled = false;
+    if (response.ok && response.result) {
+      current.importState = "saved";
+      start.textContent = "重新扫描";
+      status.textContent = "已保存到本地服务";
+      progress.textContent = `已保存 ${response.result.item_count} 条`;
+    } else if (response.kind === "network" || response.kind === "server") {
+      current.importState = "retryable";
+      start.textContent = "重试保存";
+      status.textContent = response.message;
+      progress.textContent = "本次扫描结果仍可重试保存";
+    } else {
+      current.importState = "terminal";
+      start.textContent = "重新扫描";
+      status.textContent = response.message;
+      progress.textContent = "请重新扫描后再试";
+    }
+  } catch {
+    if (current.closed) return;
+    current.importInFlight = false;
+    current.importState = "retryable";
+    start.disabled = false;
+    start.textContent = "重试保存";
+    status.textContent = "保存失败，请稍后重试";
+    progress.textContent = "本次扫描结果仍可重试保存";
   }
 }

@@ -1,4 +1,5 @@
 import type { ClientDownloadRecord, DownloadMode } from "@xhs-downloader/contracts";
+import type { CollectionImportMessage } from "./collection-import-types";
 
 /** 浏览器扩展和服务端共享的下载记录与执行模式。 */
 export type { ClientDownloadRecord, DownloadMode };
@@ -52,6 +53,7 @@ export interface ExtensionState {
 }
 
 export type ExtensionRequest =
+  | CollectionImportMessage
   | { type: "get-state" }
   | { type: "resolve-work"; sourceUrl: string }
   | { type: "set-mode"; mode: DownloadPreference }

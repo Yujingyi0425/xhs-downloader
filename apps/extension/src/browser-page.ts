@@ -13,6 +13,7 @@ import { buildPageCompatibilityDiagnostics } from "./browser-page-diagnostics";
 import { requestBrowserInteraction } from "./browser-interaction-input";
 import { CollectionCaptureController } from "./collection-controller";
 import { createCollectionPanel } from "./collection-panel";
+import { sendCollectionImport } from "./collection-import-orchestration";
 import { shouldOpenCollectionPanel } from "./collection-action-routing";
 
 const collectionPanel = createCollectionPanel(document, (onProgress) => new CollectionCaptureController({
@@ -20,7 +21,7 @@ const collectionPanel = createCollectionPanel(document, (onProgress) => new Coll
   location,
   scrollOwner: document.scrollingElement as unknown as { scrollTop: number; scrollHeight: number; clientHeight: number; scrollTo(options: { top: number }): void } | null,
   onProgress,
-}));
+}), (observation) => sendCollectionImport(observation.payload));
 
 chrome.runtime.onMessage.addListener(
   (

@@ -8,6 +8,7 @@ import {
   type BrowserInteractionResponse,
 } from "./browser-interaction-input";
 import { handlePublicationRequest, installPublicationAutomation } from "./publication-runner";
+import { handleCollectionImportRequest } from "./collection-import-runner";
 import {
   isPublicationRequest,
   type PublicationRequest,
@@ -37,6 +38,7 @@ import type {
   ExtensionResponse,
   ExtensionWork,
 } from "./types";
+import type { CollectionImportResponse } from "./collection-import-types";
 
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id) void chrome.tabs.sendMessage(tab.id, { type: "toggle-panel" });
@@ -47,7 +49,7 @@ chrome.runtime.onMessage.addListener(
     request: ExtensionRequest | PublicationRequest | BrowserInteractionRequest,
     sender,
     sendResponse: (
-      response: ExtensionResponse | PublicationResponse | BrowserInteractionResponse,
+      response: ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse,
     ) => void,
   ) => {
     void handleRequest(request, sender.tab?.id, sender.url)
@@ -66,12 +68,15 @@ async function handleRequest(
   request: ExtensionRequest | PublicationRequest | BrowserInteractionRequest,
   senderTabId?: number,
   senderUrl?: string,
-): Promise<ExtensionResponse | PublicationResponse | BrowserInteractionResponse> {
+): Promise<ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse> {
   if (isBrowserInteractionRequest(request)) {
     return handleBrowserInteractionRequest(request, senderTabId, senderUrl);
   }
   if (isPublicationRequest(request)) {
     return handlePublicationRequest(request, senderTabId, senderUrl);
+  }
+  if (request.type === "collection-import") {
+    return handleCollectionImportRequest(request, senderUrl);
   }
   if (request.type === "set-mode") {
     await saveMode(request.mode);
