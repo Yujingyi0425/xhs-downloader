@@ -83,7 +83,7 @@ function noteMatches(note: DataMap, workId: string): boolean {
   return hasKeys(note) && text(note.noteId) === workId;
 }
 
-function parseVideo(video: DataMap, images: DataMap[]): ExtensionMedia[] {
+export function parseVideo(video: DataMap, images: DataMap[]): ExtensionMedia[] {
   const originKey = text(deepGet(video, "consumer.originVideoKey"));
   const url = originKey ? `https://sns-video-bd.xhscdn.com/${originKey}` : selectVideoStream(video);
   if (!url) return [];
@@ -99,7 +99,7 @@ function parseVideo(video: DataMap, images: DataMap[]): ExtensionMedia[] {
   ];
 }
 
-function selectVideoStream(video: DataMap): string {
+export function selectVideoStream(video: DataMap): string {
   const streams = [
     ...list(deepGet(video, "media.stream.h264")),
     ...list(deepGet(video, "media.stream.h265")),

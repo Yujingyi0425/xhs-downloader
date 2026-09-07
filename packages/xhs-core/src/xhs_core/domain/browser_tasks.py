@@ -16,12 +16,18 @@ class BrowserTaskKind(StrEnum):
     LIST_FEEDS = "list_feeds"
     SEARCH_FEEDS = "search_feeds"
     GET_FEED_DETAIL = "get_feed_detail"
+    GET_FEED_MEDIA = "get_feed_media"
     GET_USER_PROFILE = "get_user_profile"
     GET_MY_PROFILE = "get_my_profile"
     SET_LIKE = "set_like"
     SET_FAVORITE = "set_favorite"
     POST_COMMENT = "post_comment"
     REPLY_COMMENT = "reply_comment"
+
+
+EPHEMERAL_XSEC_READ_KINDS = frozenset(
+    {BrowserTaskKind.GET_FEED_DETAIL, BrowserTaskKind.GET_FEED_MEDIA}
+)
 
 
 class BrowserTaskStatus(StrEnum):
@@ -147,6 +153,7 @@ def browser_task_may_write_platform(kind: BrowserTaskKind) -> bool:
         BrowserTaskKind.LIST_FEEDS,
         BrowserTaskKind.SEARCH_FEEDS,
         BrowserTaskKind.GET_FEED_DETAIL,
+        BrowserTaskKind.GET_FEED_MEDIA,
         BrowserTaskKind.GET_USER_PROFILE,
         BrowserTaskKind.GET_MY_PROFILE,
     }

@@ -38,6 +38,7 @@ from .settings import (
     create_settings_router,
 )
 from .tasks import create_task_router
+from .videos import create_video_router
 
 ServiceFactory = Callable[[AppSettings], DownloadService]
 EXTENSION_ORIGIN_PATTERN = (
@@ -90,6 +91,9 @@ def create_api(
             async with AsyncExitStack() as lifecycle:
                 lifecycle.push_async_callback(tasks.close)
                 lifecycle.push_async_callback(enrichment_jobs.close)
+                video_gateway = getattr(dependencies, "video_gateway", None)
+                if video_gateway is not None:
+                    lifecycle.push_async_callback(video_gateway.close)
                 lifecycle.push_async_callback(dependencies.publication.scheduler.close)
                 lifecycle.push_async_callback(dependencies.browser.managed.close)
                 lifecycle.push_async_callback(dependencies.browser.worker.close)
@@ -195,6 +199,15 @@ def create_api(
         api.include_router(
             create_collection_enrichment_router(
                 collection_enrichment,
+                enrichment_jobs,
+            )
+        )
+    video_processing = getattr(dependencies, "video_processing", None)
+    if video_processing is not None and collection_repository is not None:
+        api.include_router(
+            create_video_router(
+                video_processing,
+                collection_repository,
                 enrichment_jobs,
             )
         )

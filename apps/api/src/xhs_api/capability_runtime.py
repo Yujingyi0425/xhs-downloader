@@ -17,6 +17,8 @@ from xhs_core.domain import (
     BrowserDriver,
     FeedDetailResult,
     FeedListResult,
+    FeedMediaResult,
+    ProviderKind,
     ReadAccountScope,
     RoutedCapabilityResult,
     UserProfileResult,
@@ -162,6 +164,28 @@ class ReadCapabilityRuntime:
             account_guard=self._account_guard,
         )
 
+    async def get_feed_media(
+        self,
+        feed_id: str,
+        xsec_token: str,
+        request_id: str | None = None,
+    ) -> RoutedCapabilityResult[FeedMediaResult]:
+        """通过当前浏览器驱动读取媒体定位器。 Args: feed_id、xsec_token、request_id。
+
+        Returns: 带浏览器路由信息的媒体结果。
+        """
+        value = await self._browser.get_feed_media(
+            feed_id, xsec_token, request_id=request_id
+        )
+        return RoutedCapabilityResult(
+            value,
+            ProviderKind.BROWSER,
+            self.strategy,
+            False,
+            None,
+            (ProviderKind.BROWSER,),
+        )
+
     async def get_user_profile(
         self,
         user_id: str,
@@ -170,16 +194,8 @@ class ReadCapabilityRuntime:
     ) -> RoutedCapabilityResult[UserProfileResult]:
         """按当前策略读取指定用户主页。
 
-        Args:
-            user_id: 目标用户标识。
-            xsec_token: 页面访问令牌。
-            request_id: 可选的浏览器任务幂等标识。
-
-        Returns:
-            用户主页及实际路由轨迹。
-
-        Raises:
-            ProviderError: 所选提供方无法完成读取。
+        Args: user_id: 目标用户；xsec_token: 页面令牌；request_id: 幂等标识。
+        Returns: 用户主页及实际路由轨迹。
         """
         return await self._router.execute_read(
             self.strategy,

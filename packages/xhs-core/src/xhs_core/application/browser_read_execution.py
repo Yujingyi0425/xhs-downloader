@@ -69,7 +69,7 @@ class _BrowserReadExecution:
         try:
             if ephemeral_detail:
                 submitted = await self._tasks.submit_ephemeral_feed_detail(
-                    payload, request_id, self._driver
+                    payload, request_id, self._driver, kind
                 )
             else:
                 submitted = await self._tasks.submit(

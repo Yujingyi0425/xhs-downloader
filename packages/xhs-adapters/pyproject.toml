@@ -18,6 +18,14 @@ dependencies = [
     "xhs-core",
 ]
 
+[project.optional-dependencies]
+video = [
+    "av>=18.1.0",
+    "faster-whisper>=1.2.1",
+    "paddleocr>=2.10.0",
+    "paddlepaddle>=3.3.1",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

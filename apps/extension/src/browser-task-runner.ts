@@ -211,6 +211,7 @@ function taskTargetUrl(task: BrowserTaskClaim["task"]): string {
   }
   if (
     task.kind === "get_feed_detail" ||
+    task.kind === "get_feed_media" ||
     task.kind === "set_like" ||
     task.kind === "set_favorite" ||
     task.kind === "post_comment" ||

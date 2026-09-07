@@ -29,6 +29,7 @@ class BrowserTaskEphemeralServiceMixin:
         payload: dict[str, JsonValue],
         request_id: str | None = None,
         target_driver: BrowserDriver = BrowserDriver.EXTENSION,
+        _kind: BrowserTaskKind = BrowserTaskKind.GET_FEED_DETAIL,
     ) -> BrowserTask:
         """提交 token 不落盘的详情任务。
 
@@ -43,11 +44,9 @@ class BrowserTaskEphemeralServiceMixin:
         Raises:
             BrowserTaskError: 输入、驱动或幂等请求不合法。
         """
-        if not browser_driver_supports(target_driver, BrowserTaskKind.GET_FEED_DETAIL):
+        if not browser_driver_supports(target_driver, _kind):
             raise BrowserTaskError("当前浏览器执行器尚未支持详情任务")
-        full_payload = validate_browser_task_payload(
-            BrowserTaskKind.GET_FEED_DETAIL, payload
-        )
+        full_payload = validate_browser_task_payload(_kind, payload)
         token = full_payload.get("xsec_token")
         if not isinstance(token, str) or not token:
             raise BrowserTaskError("详情任务缺少临时访问令牌")
@@ -58,7 +57,7 @@ class BrowserTaskEphemeralServiceMixin:
                 existing = await self._repository.get_by_request_id(request_id)
                 if existing:
                     if (
-                        existing.kind is not BrowserTaskKind.GET_FEED_DETAIL
+                        existing.kind is not _kind
                         or existing.payload != persisted_payload
                         or existing.target_driver is not target_driver
                     ):
@@ -81,7 +80,7 @@ class BrowserTaskEphemeralServiceMixin:
             task = BrowserTask(
                 task_id=uuid4().hex,
                 request_id=request_id,
-                kind=BrowserTaskKind.GET_FEED_DETAIL,
+                kind=_kind,
                 payload=persisted_payload,
                 target_driver=target_driver,
                 created_at=now,
@@ -143,8 +142,29 @@ class BrowserTaskEphemeralServiceMixin:
                 clear_lease=True,
             ):
                 if (
-                    task.kind is BrowserTaskKind.GET_FEED_DETAIL
+                    task.kind
+                    in {BrowserTaskKind.GET_FEED_DETAIL, BrowserTaskKind.GET_FEED_MEDIA}
                     and "xsec_token" not in task.payload
                 ):
                     await self._ephemeral_channel.discard(task.task_id)
                 return canceled
+
+    async def submit_ephemeral_feed_media(
+        self,
+        payload: dict[str, JsonValue],
+        request_id: str | None = None,
+        target_driver: BrowserDriver = BrowserDriver.EXTENSION,
+    ) -> BrowserTask:
+        """提交 token 不落盘的媒体读取任务。
+
+        Args:
+            payload: 含临时令牌的媒体输入。
+            request_id: 可选幂等标识。
+            target_driver: 目标浏览器驱动。
+
+        Returns:
+            持久化 payload 不含 token 的浏览器任务。
+        """
+        return await self.submit_ephemeral_feed_detail(
+            payload, request_id, target_driver, BrowserTaskKind.GET_FEED_MEDIA
+        )

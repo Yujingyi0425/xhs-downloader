@@ -36,6 +36,7 @@ export type BrowserTaskKind =
   | "list_feeds"
   | "search_feeds"
   | "get_feed_detail"
+  | "get_feed_media"
   | "get_user_profile"
   | "get_my_profile"
   | "set_like"
@@ -173,6 +174,19 @@ export interface FeedDetailResult {
   comments: FeedComment[];
   comments_has_more: boolean;
   comments_cursor: string;
+}
+
+/** 帖子媒体读取任务的短期结果。 */
+export interface FeedMediaResult {
+  feed_id: string;
+  note_type: "image" | "video" | "unknown";
+  media: Array<{
+    index: number;
+    kind: "video" | "image" | "live";
+    url: string;
+    suffix: string;
+    preview_url?: string | null;
+  }>;
 }
 
 /** 用户主页展示的一项统计值。 */

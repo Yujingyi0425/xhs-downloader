@@ -11,6 +11,7 @@ import { readLiveInitialState } from "./browser-state-bridge";
 import { loadComments, needsCommentLoading } from "./comment-loader";
 import { postComment, replyComment } from "./comment-runner";
 import { parseFeedDetailDocument } from "./feed-detail-parser";
+import { parseFeedMediaDocument } from "./feed-media-parser";
 import { parseFeedListDocument } from "./feed-parser";
 import { setDesiredInteraction } from "./interaction-runner";
 import { parseUserProfileDocument } from "./profile-parser";
@@ -94,6 +95,13 @@ export async function executeBrowserPageTask(
       currentState = await readLiveInitialState(page);
     }
     return success("帖子详情读取完成", parseFeedDetailDocument(page, options, currentState));
+  }
+  if (task.kind === "get_feed_media") {
+    const feedId = payloadText(task, "feed_id");
+    return success(
+      "帖子视频媒体读取完成",
+      parseFeedMediaDocument(page, feedId, pageUrl),
+    );
   }
   if (task.kind === "get_user_profile") {
     return success(

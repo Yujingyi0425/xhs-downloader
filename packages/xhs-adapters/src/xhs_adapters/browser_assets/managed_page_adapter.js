@@ -75,6 +75,28 @@
   }
 
   // src/parser.ts
+  var EPHEMERAL_IMAGE_ROUTE = /^\d{12}\/[0-9a-f]{32}\//i;
+  function parseInitialStateScript(script, sourceUrl) {
+    const state = parseInitialStateValue(script);
+    const workId = workIdFromUrl(sourceUrl);
+    const note = selectNote(state, workId);
+    const resolvedWorkId = text(note.noteId) || workId;
+    const user = object(note.user);
+    const authorId = text(user.userId);
+    const images = list(note.imageList);
+    const video = object(note.video);
+    const kind = text(note.type);
+    const media = kind === "video" && images.length <= 1 ? parseVideo(video, images) : parseImages(images);
+    return {
+      workId: resolvedWorkId,
+      sourceUrl,
+      title: text(note.title),
+      description: text(note.desc),
+      authorName: text(user.nickname) || text(user.nickName) || authorId,
+      authorAvatar: text(user.avatar) || text(user.image) || void 0,
+      media
+    };
+  }
   function parseInitialStateValue(script) {
     const separator = script.indexOf("=");
     if (separator < 0) throw new Error("\u5E16\u5B50\u521D\u59CB\u72B6\u6001\u683C\u5F0F\u65E0\u6548");
@@ -86,6 +108,83 @@
       throw new Error("\u5E16\u5B50\u521D\u59CB\u72B6\u6001\u65E0\u6CD5\u89E3\u6790");
     }
     return state;
+  }
+  function selectNote(state, workId) {
+    const noteMap = object(deepGet(state, "note.noteDetailMap"));
+    const direct = object(noteMap[workId]);
+    const directNote = object(direct.note);
+    if (noteMatches(directNote, workId)) return directNote;
+    const matchingNote = Object.values(noteMap).map((wrapper) => object(object(wrapper).note)).find((note) => noteMatches(note, workId));
+    if (matchingNote) return matchingNote;
+    const phoneNote = object(deepGet(state, "noteData.data.noteData"));
+    if (noteMatches(phoneNote, workId)) return phoneNote;
+    if (hasKeys(noteMap) || hasKeys(phoneNote)) {
+      throw new Error("\u9875\u9762\u5E16\u5B50\u6570\u636E\u4E0E\u5F53\u524D\u94FE\u63A5\u4E0D\u4E00\u81F4\uFF0C\u8BF7\u5237\u65B0\u9875\u9762\u540E\u91CD\u8BD5");
+    }
+    throw new Error("\u5F53\u524D\u9875\u9762\u6CA1\u6709\u53EF\u89E3\u6790\u7684\u5E16\u5B50\u6570\u636E");
+  }
+  function noteMatches(note, workId) {
+    return hasKeys(note) && text(note.noteId) === workId;
+  }
+  function parseVideo(video, images) {
+    const originKey = text(deepGet(video, "consumer.originVideoKey"));
+    const url = originKey ? `https://sns-video-bd.xhscdn.com/${originKey}` : selectVideoStream(video);
+    if (!url) return [];
+    const preview = text(images[0]?.urlDefault) || text(images[0]?.url);
+    return [
+      {
+        index: 1,
+        kind: "video",
+        url: decodeUrl(url),
+        suffix: "mp4",
+        previewUrl: preview ? stableImageUrl(preview) : void 0
+      }
+    ];
+  }
+  function selectVideoStream(video) {
+    const streams = [
+      ...list(deepGet(video, "media.stream.h264")),
+      ...list(deepGet(video, "media.stream.h265"))
+    ];
+    const selected = streams.sort((left, right) => number(right.height) - number(left.height))[0];
+    const backups = Array.isArray(selected?.backupUrls) ? selected.backupUrls : [];
+    return backups.find((item) => typeof item === "string" && !!item) ?? text(selected?.masterUrl);
+  }
+  function parseImages(images) {
+    return images.flatMap((image, position) => {
+      const index = position + 1;
+      const result = [];
+      const imageUrl = text(image.urlDefault) || text(image.url);
+      if (imageUrl) {
+        result.push({
+          index,
+          kind: "image",
+          url: stableImageUrl(imageUrl),
+          suffix: imageSuffix(imageUrl)
+        });
+      }
+      const liveUrl = text(deepGet(image, "stream.h264.0.masterUrl"));
+      if (liveUrl) {
+        result.push({
+          index,
+          kind: "live",
+          url: decodeUrl(liveUrl),
+          suffix: "mp4",
+          previewUrl: imageUrl ? stableImageUrl(imageUrl) : void 0
+        });
+      }
+      return result;
+    });
+  }
+  function stableImageUrl(value) {
+    const parsed = new URL(decodeUrl(value));
+    const path = parsed.pathname.replace(/^\//, "").replace(EPHEMERAL_IMAGE_ROUTE, "").split("!", 1)[0];
+    return `https://sns-img-bd.xhscdn.com/${path}`;
+  }
+  function imageSuffix(value) {
+    const match = decodeUrl(value).match(/_(avif|heic|jpeg|jpg|png|webp)(?:_|$)/i);
+    const suffix = match?.[1]?.toLowerCase();
+    return suffix === "jpg" ? "jpeg" : suffix || "jpeg";
   }
   function normalizeJavaScriptValue(value) {
     let result = "";
@@ -118,6 +217,35 @@
   function isBoundary(value) {
     return !value || !/[A-Za-z0-9_$]/.test(value);
   }
+  function workIdFromUrl(value) {
+    const parts = new URL(value).pathname.split("/").filter(Boolean);
+    return parts.at(-1) ?? "";
+  }
+  function deepGet(value, path) {
+    return path.split(".").reduce((current, segment) => {
+      if (Array.isArray(current)) return current[Number(segment)];
+      return object(current)[segment];
+    }, value);
+  }
+  function object(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+  function list(value) {
+    return Array.isArray(value) ? value.map(object).filter(hasKeys) : [];
+  }
+  function hasKeys(value) {
+    return Object.keys(value).length > 0;
+  }
+  function text(value) {
+    return typeof value === "string" || typeof value === "number" ? String(value) : "";
+  }
+  function number(value) {
+    const result = Number(value);
+    return Number.isFinite(result) ? result : 0;
+  }
+  function decodeUrl(value) {
+    return value.replaceAll("\\u002F", "/").replaceAll("\\/", "/").replaceAll("\\u0026", "&");
+  }
 
   // src/page-data.ts
   var INITIAL_STATE_PREFIX = "window.__INITIAL_STATE__";
@@ -138,9 +266,9 @@
     return Array.isArray(value) ? value : [];
   }
   function unwrapState(value) {
-    const object2 = dataRecord(value);
-    if ("value" in object2) return object2.value;
-    if ("_value" in object2) return object2._value;
+    const object3 = dataRecord(value);
+    if ("value" in object3) return object3.value;
+    if ("_value" in object3) return object3._value;
     return value;
   }
   function dataText(value) {
@@ -293,7 +421,7 @@
   var INITIAL_STATE_PREFIX2 = "window.__INITIAL_STATE__";
   function detectLoginState(page, pageUrl) {
     const user = readCurrentUser(page);
-    const stateAccountId = text(user?.userId ?? user?.user_id);
+    const stateAccountId = text2(user?.userId ?? user?.user_id);
     const stateLoggedIn = user?.guest === false && isValidAccountId(stateAccountId);
     const navigationAccountId = readCurrentNavigationAccountId(page);
     const loginVisible = new URL(pageUrl).pathname.includes("login") || Boolean(page.querySelector(LOGIN_SELECTOR));
@@ -302,27 +430,27 @@
     return {
       logged_in: loggedIn,
       user_id: loggedIn ? accountId : null,
-      nickname: loggedIn ? text(user?.nickname ?? user?.nickName) || null : null
+      nickname: loggedIn ? text2(user?.nickname ?? user?.nickName) || null : null
     };
   }
   function readCurrentUser(page) {
     const scripts = [...page.scripts].map((script) => script.textContent?.trim() ?? "").filter((value) => value.startsWith(INITIAL_STATE_PREFIX2)).reverse();
     for (const script of scripts) {
       try {
-        const state = object(parseInitialStateValue(script));
-        const user = object(state.user);
-        const rawInfo = object(user.userInfo);
-        const info = object(rawInfo.value ?? rawInfo);
+        const state = object2(parseInitialStateValue(script));
+        const user = object2(state.user);
+        const rawInfo = object2(user.userInfo);
+        const info = object2(rawInfo.value ?? rawInfo);
         if (Object.keys(info).length) return info;
       } catch {
       }
     }
     return void 0;
   }
-  function object(value) {
+  function object2(value) {
     return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   }
-  function text(value) {
+  function text2(value) {
     return typeof value === "string" || typeof value === "number" ? String(value) : "";
   }
 
@@ -705,6 +833,24 @@
     return "unknown";
   }
 
+  // src/feed-media-parser.ts
+  function parseFeedMediaDocument(page, feedId, sourceUrl) {
+    const scripts = [...page.scripts].map((script) => script.textContent?.trim() ?? "").filter((text3) => text3.startsWith("window.__INITIAL_STATE__")).reverse();
+    for (const script of scripts) {
+      try {
+        const work = parseInitialStateScript(script, sourceUrl);
+        if (work.workId !== feedId) throw new Error("\u5A92\u4F53\u7ED3\u679C\u4E0E\u8BF7\u6C42\u5E16\u5B50\u4E0D\u4E00\u81F4");
+        return {
+          feed_id: feedId,
+          note_type: work.media.some((media) => media.kind === "video") ? "video" : "unknown",
+          media: work.media
+        };
+      } catch {
+      }
+    }
+    throw new Error("\u9875\u9762\u6CA1\u6709\u8BF7\u6C42\u5E16\u5B50\u7684\u89C6\u9891\u5A92\u4F53");
+  }
+
   // src/interaction-runner.ts
   var SELECTORS = {
     like: ".interact-container .left .like-lottie",
@@ -879,10 +1025,10 @@
     }
     throw new Error("\u641C\u7D22\u7B5B\u9009\u9762\u677F\u672A\u80FD\u53CA\u65F6\u6253\u5F00");
   }
-  function findExactTextElement(scope, text2) {
+  function findExactTextElement(scope, text3) {
     const candidates = scope.querySelectorAll("button, [role='button'], div, span");
     return [...candidates].find(
-      (element) => element.textContent?.trim() === text2 && ![...element.children].some((child) => child.textContent?.trim() === text2)
+      (element) => element.textContent?.trim() === text3 && ![...element.children].some((child) => child.textContent?.trim() === text3)
     ) ?? null;
   }
   function delay5(milliseconds) {
@@ -933,6 +1079,13 @@
         currentState = await readLiveInitialState(page);
       }
       return success("\u5E16\u5B50\u8BE6\u60C5\u8BFB\u53D6\u5B8C\u6210", parseFeedDetailDocument(page, options, currentState));
+    }
+    if (task.kind === "get_feed_media") {
+      const feedId = payloadText(task, "feed_id");
+      return success(
+        "\u5E16\u5B50\u89C6\u9891\u5A92\u4F53\u8BFB\u53D6\u5B8C\u6210",
+        parseFeedMediaDocument(page, feedId, pageUrl)
+      );
     }
     if (task.kind === "get_user_profile") {
       return success(

@@ -7,6 +7,7 @@ from secrets import token_urlsafe
 from pydantic import JsonValue
 
 from xhs_core.domain import (
+    EPHEMERAL_XSEC_READ_KINDS,
     BrowserDriver,
     BrowserTask,
     BrowserTaskClaim,
@@ -28,11 +29,7 @@ from .browser_task_ephemeral import (
 )
 
 _ACTIVE = {BrowserTaskStatus.CLAIMED, BrowserTaskStatus.RUNNING}
-_TERMINAL = {
-    BrowserTaskStatus.SUCCEEDED,
-    BrowserTaskStatus.FAILED,
-    BrowserTaskStatus.NEEDS_REVIEW,
-}
+_TERMINAL = set(BrowserTaskStatus) - _ACTIVE - {BrowserTaskStatus.QUEUED}
 
 
 class BrowserExecutionService:
@@ -71,8 +68,7 @@ class BrowserExecutionService:
             executor_id: 已登记扩展或受管 Worker 实例 ID。
             target_driver: 只领取该驱动的排队任务。
 
-        Returns:
-            带短期令牌的任务；队列为空时返回 ``None``。
+        Returns: 带短期令牌的任务；队列为空时返回 ``None``。
         """
         await self.reconcile_expired()
         now = datetime.now(UTC)
@@ -86,7 +82,7 @@ class BrowserExecutionService:
         )
         if (
             task
-            and task.kind is BrowserTaskKind.GET_FEED_DETAIL
+            and task.kind in EPHEMERAL_XSEC_READ_KINDS
             and "xsec_token" not in task.payload
         ):
             secret = await self._ephemeral_channel.consume(task.task_id)
@@ -141,17 +137,23 @@ class BrowserExecutionService:
         persisted_result = normalized_result
         if (
             status is BrowserTaskStatus.SUCCEEDED
-            and task.kind is BrowserTaskKind.GET_FEED_DETAIL
+            and task.kind in EPHEMERAL_XSEC_READ_KINDS
             and "xsec_token" not in task.payload
             and normalized_result is not None
         ):
             transient_result = normalized_result
-            persisted_result = dict(normalized_result)
-            persisted_result.pop("xsec_token", None)
+            if task.kind is BrowserTaskKind.GET_FEED_MEDIA:
+                persisted_result = {
+                    "feed_id": normalized_result.get("feed_id", ""),
+                    "note_type": normalized_result.get("note_type", "unknown"),
+                    "media_count": len(normalized_result.get("media", [])),
+                }
+            else:
+                persisted_result = dict(normalized_result)
+                persisted_result.pop("xsec_token", None)
             await self._ephemeral_channel.publish_result(task.task_id, transient_result)
         ephemeral_detail = (
-            task.kind is BrowserTaskKind.GET_FEED_DETAIL
-            and "xsec_token" not in task.payload
+            task.kind in EPHEMERAL_XSEC_READ_KINDS and "xsec_token" not in task.payload
         )
         log_discarded_reason(
             task_id,
@@ -202,7 +204,7 @@ class BrowserExecutionService:
                 "executor_id": None,
                 "extension_id": None,
                 "lease_expires_at": None,
-                "message": "详情任务临时访问上下文已失效",
+                "message": "临时访问上下文已失效",
                 "updated_at": datetime.now(UTC),
             }
         )

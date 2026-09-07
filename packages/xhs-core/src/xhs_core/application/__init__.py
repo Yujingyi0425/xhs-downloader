@@ -40,6 +40,7 @@ from .publication_drafts import PublicationDraftService
 from .publication_execution import PublicationExecutionService
 from .publication_scheduler import PublicationScheduler
 from .publication_tasks import PublicationTaskService
+from .video_processing import VideoProcessingService
 
 __all__ = [
     "DEFAULT_BROWSER_TASK_EPHEMERAL_CHANNEL",
@@ -75,4 +76,5 @@ __all__ = [
     "PublicationScheduler",
     "PublicationTaskService",
     "UnknownSnapshotError",
+    "VideoProcessingService",
 ]

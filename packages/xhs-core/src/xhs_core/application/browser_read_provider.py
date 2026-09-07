@@ -7,6 +7,7 @@ from xhs_core.domain import (
     BrowserTaskKind,
     FeedDetailResult,
     FeedListResult,
+    FeedMediaResult,
     UserProfileResult,
 )
 from xhs_core.domain.browser_requests import SearchFilters
@@ -145,6 +146,31 @@ class BrowserReadProvider:
             FeedDetailResult,
             lambda value: value.feed_id == feed_id,
             "详情结果与请求的帖子不一致",
+            ephemeral_detail=True,
+        )
+
+    async def get_feed_media(
+        self,
+        feed_id: str,
+        xsec_token: str,
+        request_id: str | None = None,
+    ) -> FeedMediaResult:
+        """读取帖子媒体定位器。
+
+        Args:
+            feed_id: 目标身份。
+            xsec_token: 短期令牌。
+            request_id: 幂等标识。
+
+        Returns: 经过身份校验的媒体结果。
+        """
+        return await self._execution.execute(
+            BrowserTaskKind.GET_FEED_MEDIA,
+            {"feed_id": feed_id, "xsec_token": xsec_token},
+            request_id,
+            FeedMediaResult,
+            lambda value: value.feed_id == feed_id,
+            "媒体结果与请求的帖子不一致",
             ephemeral_detail=True,
         )
 

@@ -7,6 +7,7 @@ from xhs_core.domain import (
     CollectionEnrichmentStatus,
     CollectionFeedDetail,
     CollectionStatus,
+    CollectionVideoContent,
 )
 
 
@@ -137,3 +138,27 @@ class CollectionEnrichAcceptedResponse(BaseModel):
 
     snapshot_id: str
     job_status: str
+
+
+class VideoProcessRequest(BaseModel):
+    """视频处理批次的本机管理参数。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int = Field(default=1, ge=1, le=3)
+    keep_source: bool = False
+
+
+class VideoProcessAcceptedResponse(BaseModel):
+    """视频处理任务已接收响应。"""
+
+    snapshot_id: str
+    job_status: str
+
+
+class VideoContentResponse(BaseModel):
+    """不含源 URL、token 或模型调试信息的视频内容响应。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: CollectionVideoContent

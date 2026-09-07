@@ -18,6 +18,7 @@ from .feeds import (
     BrowserAccount,
     FeedDetailResult,
     FeedListResult,
+    FeedMediaResult,
     UserProfileResult,
 )
 
@@ -67,6 +68,15 @@ class FeedDetailPayload(BaseModel):
     comment_limit: int = Field(default=10, ge=0, le=500)
     include_replies: bool = False
     reply_limit: int = Field(default=10, ge=0, le=200)
+
+
+class FeedMediaPayload(BaseModel):
+    """帖子媒体读取任务输入。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feed_id: str = Field(min_length=1, max_length=128)
+    xsec_token: str = Field(min_length=1, max_length=2048, repr=False)
 
 
 class UserProfilePayload(BaseModel):
@@ -140,6 +150,7 @@ _PAYLOAD_MODELS: dict[BrowserTaskKind, type[BaseModel]] = {
     BrowserTaskKind.LIST_FEEDS: EmptyBrowserPayload,
     BrowserTaskKind.SEARCH_FEEDS: SearchFeedsPayload,
     BrowserTaskKind.GET_FEED_DETAIL: FeedDetailPayload,
+    BrowserTaskKind.GET_FEED_MEDIA: FeedMediaPayload,
     BrowserTaskKind.GET_USER_PROFILE: UserProfilePayload,
     BrowserTaskKind.GET_MY_PROFILE: EmptyBrowserPayload,
     BrowserTaskKind.SET_LIKE: DesiredStatePayload,
@@ -155,6 +166,7 @@ _RESULT_MODELS: dict[BrowserTaskKind, type[BaseModel]] = {
     BrowserTaskKind.LIST_FEEDS: FeedListResult,
     BrowserTaskKind.SEARCH_FEEDS: FeedListResult,
     BrowserTaskKind.GET_FEED_DETAIL: FeedDetailResult,
+    BrowserTaskKind.GET_FEED_MEDIA: FeedMediaResult,
     BrowserTaskKind.GET_USER_PROFILE: UserProfileResult,
     BrowserTaskKind.GET_MY_PROFILE: UserProfileResult,
     BrowserTaskKind.SET_LIKE: DesiredStateResult,

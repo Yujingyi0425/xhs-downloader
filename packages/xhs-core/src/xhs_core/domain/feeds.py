@@ -55,6 +55,28 @@ class FeedSummary(BaseModel):
     video_duration: int | None = Field(default=None, ge=0)
 
 
+class FeedMediaResource(BaseModel):
+    """详情页媒体获取能力返回的短期媒体定位器。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=1)
+    kind: Literal["video", "image", "live"]
+    url: HttpUrl
+    suffix: str = Field(min_length=1, max_length=10)
+    preview_url: HttpUrl | None = None
+
+
+class FeedMediaResult(BaseModel):
+    """不含访问令牌的短期媒体获取结果。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feed_id: str = Field(min_length=1, max_length=128)
+    note_type: Literal["image", "video", "unknown"] = "unknown"
+    media: list[FeedMediaResource] = Field(default_factory=list, max_length=20)
+
+
 class FeedListResult(BaseModel):
     """首页推荐或搜索任务的分页结果。"""
 

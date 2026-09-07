@@ -10,12 +10,14 @@ from .extension_credentials import SqliteExtensionCredentialRepository
 from .posts import SqlitePostRepository
 from .publication_drafts import SqlitePublicationDraftRepository
 from .publication_tasks import SqlitePublicationTaskRepository
+from .video_content import SqliteCollectionVideoContentRepository
 
 __all__ = [
     "SqliteBrowserTaskRepository",
     "SqliteClientRecordRepository",
     "SqliteCollectionEnrichmentRepository",
     "SqliteCollectionRepository",
+    "SqliteCollectionVideoContentRepository",
     "SqliteDownloadRepository",
     "SqliteExtensionCredentialRepository",
     "SqlitePostRepository",
