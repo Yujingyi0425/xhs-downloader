@@ -5,6 +5,9 @@
 ```text
 PHASE=TC2B2-COLLECTION-HTTP-API
 BASELINE_COMMIT=af89827e0de457114fda5726b51490765b5a6daf
+R1_SOURCE_COMMIT=a4ef87c79b5c7763838c9c6b89e45b6a1fdbca7f
+R1_TEST_COMMIT=d9e71c624da641553b3633f5ead3a9af52365044
+R1_EVIDENCE_COMMIT=232d223271d683d89e58ae69ba14bba49ce234a5
 ```
 
 ## API boundary
@@ -47,6 +50,11 @@ IDEMPOTENCY_DIFFERENT_MEMBERSHIP_409=PASS
 IDEMPOTENCY_DIFFERENT_BOARD_409=PASS
 NEW_REQUEST_SAME_MEMBERSHIP_NEW_REVISION=PASS
 REORDER_SEMANTICS=PASS
+HISTORICAL_SNAPSHOT_DIFF=PASS
+HISTORICAL_DIFF_AFTER_LATER_REVISIONS=PASS
+FIRST_REVISION_DIFF_VS_EMPTY=PASS
+LATEST_DIFF=PASS
+HISTORICAL_DIFF_AFTER_RESTART=PASS
 RESTART_PERSISTENCE=PASS
 LATEST_READ=PASS
 HISTORY_READ=PASS
@@ -79,8 +87,8 @@ The actual sentinel `synthetic-secret-token-never-leak` is exercised in API retr
 |---|---|
 | import 0/1/50/500 and success response redaction | `tests/interfaces/test_collections_api.py::test_collection_import_supports_synthetic_sizes` |
 | replay, 409 conflict, reorder and token-only retry | `tests/interfaces/test_collections_api.py::test_collection_api_replays_conflict_and_reorder_semantics` |
-| latest/history/snapshot reads, restart-shaped persistence and ordered items | `tests/interfaces/test_collections_api.py::test_collection_api_reads_latest_history_and_ordered_snapshot` |
-| extension authentication and loopback boundary | `tests/interfaces/test_collections_api.py::test_collection_api_requires_extension_and_only_accepts_loopback` |
+| latest/history/snapshot reads, exact historical diff after later revisions, restart and ordered items | `tests/interfaces/test_collections_api.py::test_collection_api_reads_latest_history_and_ordered_snapshot` |
+| extension authentication and loopback boundary | `tests/interfaces/test_collections_api_access.py::test_collection_api_requires_extension_and_only_accepts_loopback` |
 | validation and log redaction | `tests/interfaces/test_collections_api.py::test_collection_api_redacts_validation_error_and_logs` |
 | pre-route 501/extra/malformed/order validation redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_pre_route_validation` |
 | injected failure response and log redaction | `tests/interfaces/test_collections_api_validation.py::test_collection_api_redacts_injected_failure` |
@@ -105,6 +113,6 @@ RUFF_FORMAT=PASS
 PYTEST=PASS
 PYTEST_TOTAL=658
 PYTEST_FAILED=0
-COVERAGE=91.33%
+COVERAGE=91.34%
 COVERAGE_GATE=PASS (>=85%)
 ```
