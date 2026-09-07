@@ -142,6 +142,31 @@ class SqliteCollectionVideoContentRepository:
             await database.commit()
             return cursor.rowcount == 1
 
+    async def recover_running(self, snapshot_id: str) -> int:
+        """回收指定快照中进程重启遗留的 RUNNING 记录。
+
+        Args:
+            snapshot_id: 待恢复的收藏快照标识。
+
+        Returns:
+            被回收的记录数量。
+        """
+        await self._initialize()
+        async with connect(self._database) as database:
+            cursor = await database.execute(
+                """UPDATE collection_video_content
+                SET status=?, content_json=json_set(content_json, '$.status', ?)
+                WHERE snapshot_id=? AND status=?""",
+                (
+                    VideoProcessingStatus.FAILED_RETRYABLE.value,
+                    VideoProcessingStatus.FAILED_RETRYABLE.value,
+                    snapshot_id,
+                    VideoProcessingStatus.RUNNING.value,
+                ),
+            )
+            await database.commit()
+            return cursor.rowcount
+
     async def list_snapshot(self, snapshot_id: str) -> list[CollectionVideoContent]:
         """按 feed_id 稳定读取一个快照的视频内容。
 

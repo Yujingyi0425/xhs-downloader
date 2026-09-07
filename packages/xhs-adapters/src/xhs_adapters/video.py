@@ -1,12 +1,9 @@
 """TC4 本地视频 artifact、PyAV、STT 与 OCR 适配器。"""
 
-import os
 from asyncio import to_thread
 from hashlib import sha256
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
-import aiofiles
 import av
 from xhs_core.domain import (
     FeedMediaResult,
@@ -15,6 +12,8 @@ from xhs_core.domain import (
     VideoTranscript,
     VideoTranscriptSegment,
 )
+
+from .filesystem.streaming import stream_to_atomic_file
 
 
 class SafeVideoArtifactStore:
@@ -44,26 +43,17 @@ class SafeVideoArtifactStore:
         target_dir = self._root / safe_id
         target_dir.mkdir(parents=True, exist_ok=True)
         target = target_dir / "source.mp4"
-        with NamedTemporaryFile(
-            dir=target_dir, prefix=".source-", suffix=".part", delete=False
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-        digest = sha256()
-        size = 0
-        try:
-            async with (
-                self._gateway.stream(str(video.url)) as response,
-                aiofiles.open(temporary_path, "ab") as output,
-            ):
-                async for chunk in response.aiter_bytes():
-                    await output.write(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-            await to_thread(os.replace, temporary_path, target)
-        except Exception:
-            await to_thread(temporary_path.unlink, True)
-            raise
-        return str(target.relative_to(self._root)), digest.hexdigest(), size
+        part = target_dir / ".source.mp4.part"
+        marker = target_dir / ".source.mp4.part.url"
+        result = await stream_to_atomic_file(
+            self._gateway,
+            str(video.url),
+            part,
+            marker,
+            target,
+            cleanup_on_error=True,
+        )
+        return str(result.target.relative_to(self._root)), result.sha256, result.size
 
     def resolve_path(self, relative_path: str) -> str:
         """把安全相对路径解析为仅供运行时使用的物理路径。

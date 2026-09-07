@@ -56,6 +56,9 @@ class VideoProcessingService:
         Returns:
             按快照顺序返回本轮处理结果。
         """
+        recover_running = getattr(self._videos, "recover_running", None)
+        if recover_running is not None:
+            await recover_running(snapshot_id)
         memberships = await self._collections.list_snapshot_items(snapshot_id)
         processed: list[CollectionVideoContent] = []
         for membership in memberships:
@@ -215,7 +218,12 @@ class VideoProcessingService:
         if save_if_attempt is not None:
             accepted = await save_if_attempt(content, content.attempt_count)
             if not accepted:
-                return content
+                current = await self._videos.get(
+                    content.snapshot_id, content.feed_id, content.processing_version
+                )
+                return current or content.model_copy(
+                    update={"status": VideoProcessingStatus.FAILED_RETRYABLE}
+                )
         else:
             await self._videos.save(content)
         return content

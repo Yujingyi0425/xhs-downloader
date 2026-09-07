@@ -68,6 +68,17 @@ class VideoContentRepository(Protocol):
         """
         ...
 
+    async def recover_running(self, snapshot_id: str) -> int:
+        """将进程重启遗留的 RUNNING 记录安全回收到可重试状态。
+
+        Args:
+            snapshot_id: 待恢复的收藏快照标识。
+
+        Returns:
+            被回收的记录数量。
+        """
+        ...
+
     async def list_snapshot(self, snapshot_id: str) -> list[CollectionVideoContent]:
         """读取快照内的全部视频内容。 Args: 快照标识。 Returns: 内容列表。"""
         ...

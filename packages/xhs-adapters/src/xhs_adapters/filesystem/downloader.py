@@ -1,12 +1,10 @@
 """支持断点恢复和原子替换的文件下载器。"""
 
 import os
-from asyncio import Semaphore, gather, sleep, to_thread
-from hashlib import sha256
+from asyncio import Semaphore, gather, sleep
 from pathlib import Path
 from typing import ClassVar
 
-from aiofiles import open as async_open
 from loguru import logger
 from xhs_core.domain.errors import DownloadError, InvalidPartialContentError
 from xhs_core.domain.models import (
@@ -21,6 +19,7 @@ from xhs_core.domain.ports import PageGateway
 from xhs_adapters.config import AppSettings
 
 from .progress import ProgressCallback, ProgressTracker
+from .streaming import stream_to_atomic_file
 
 
 class FileDownloader:
@@ -142,38 +141,33 @@ class FileDownloader:
     ) -> DownloadArtifact:
         async with self._semaphore:
             part, marker = self._partial_paths(detail, resource)
-            self._prepare_partial(part, marker, resource.url)
-            resume_at = part.stat().st_size if part.exists() else 0
-            headers = {"Range": f"bytes={resume_at}-"} if resume_at else None
-            suffix = resource.suffix
             try:
-                async with self._gateway.stream(resource.url, headers) as response:
-                    suffix = self._response_suffix(
-                        response.headers.get("Content-Type", ""),
-                        resource.suffix,
-                    )
-                    await tracker.declare_total(
-                        _content_length(response.headers.get("Content-Length"))
-                    )
-                    mode = "ab" if resume_at and response.status_code == 206 else "wb"
-                    async with async_open(part, mode) as output:
-                        async for chunk in response.aiter_bytes(self._settings.chunk):
-                            await output.write(chunk)
-                            await tracker.advance(len(chunk))
+                result = await stream_to_atomic_file(
+                    self._gateway,
+                    resource.url,
+                    part,
+                    marker,
+                    lambda headers: folder.joinpath(
+                        self._filename(
+                            work_name,
+                            resource,
+                            self._response_suffix(
+                                headers.get("Content-Type", ""), resource.suffix
+                            ),
+                        )
+                    ),
+                    chunk_size=self._settings.chunk,
+                    on_chunk=tracker.advance,
+                )
+                await tracker.declare_total(
+                    _content_length(result.headers.get("Content-Length"))
+                )
             except InvalidPartialContentError:
-                part.unlink(missing_ok=True)
-                marker.unlink(missing_ok=True)
                 raise
-            if not part.exists() or part.stat().st_size == 0:
-                raise DownloadError("下载结果为空")
-            target = folder.joinpath(self._filename(work_name, resource, suffix))
-            target.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(part, target)
-            marker.unlink(missing_ok=True)
+            target = result.target
             if self._settings.write_mtime and detail.published_at:
                 timestamp = detail.published_at.timestamp()
                 os.utime(target, (timestamp, timestamp))
-            digest = await to_thread(_hash_file, target)
             relative = target.relative_to(self._settings.output_root)
             logger.success(
                 "媒体文件下载完成（类型：{}，序号：{}）",
@@ -182,8 +176,8 @@ class FileDownloader:
             )
             return DownloadArtifact(
                 path=str(relative),
-                sha256=digest,
-                size=target.stat().st_size,
+                sha256=result.sha256,
+                size=result.size,
                 media_index=resource.index,
                 kind=resource.kind,
             )
@@ -197,16 +191,6 @@ class FileDownloader:
         stem = f"{detail.work_id}_{resource.kind.value}_{resource.index}"
         part = self._settings.temp_dir.joinpath(f"{stem}.part")
         return part, part.with_suffix(".part.url")
-
-    @staticmethod
-    def _prepare_partial(part: Path, marker: Path, url: str) -> None:
-        url_fingerprint = sha256(url.encode("utf-8")).hexdigest()
-        marker_matches = (
-            marker.exists() and marker.read_text(encoding="utf-8") == url_fingerprint
-        )
-        if part.exists() and not marker_matches:
-            part.unlink(missing_ok=True)
-        marker.write_text(url_fingerprint, encoding="utf-8")
 
     @staticmethod
     def _filename(
@@ -245,11 +229,3 @@ def _content_length(value: str | None) -> int:
         return max(0, int(value))
     except ValueError:
         return 0
-
-
-def _hash_file(path: Path) -> str:
-    digest = sha256()
-    with path.open("rb") as file:
-        for chunk in iter(lambda: file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
