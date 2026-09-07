@@ -241,9 +241,7 @@ _BLOCKED_MESSAGES = {
     AccountConsistencyStatus.DIFFERENT: (
         "保存的 Cookie 和浏览器里登录的不是同一个账号，为免串号已经停下"
     ),
-    AccountConsistencyStatus.LOGGED_OUT: (
-        "还没有登录小红书，先完成登录再试"
-    ),
+    AccountConsistencyStatus.LOGGED_OUT: ("还没有登录小红书，先完成登录再试"),
     AccountConsistencyStatus.UNVERIFIED: (
         "没法确认现在用的是哪个账号，为免串号已经停下，先登录一次再试"
     ),

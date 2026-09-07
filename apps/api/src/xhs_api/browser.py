@@ -88,8 +88,7 @@ def create_browser_router(
         _require_management(request, management_access)
         now = datetime.now(UTC)
         return [
-            _presence_status(item, now)
-            for item in await credentials.list_presence()
+            _presence_status(item, now) for item in await credentials.list_presence()
         ]
 
     @router.delete("/extensions/{extension_id}", status_code=204)

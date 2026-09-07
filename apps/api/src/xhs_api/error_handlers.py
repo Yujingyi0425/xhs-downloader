@@ -16,6 +16,7 @@ def register_exception_handlers(api: FastAPI) -> None:
     Args:
         api: 待注册处理器的应用实例。
     """
+
     @api.exception_handler(ProviderError)
     async def handle_provider_error(
         _: Request,

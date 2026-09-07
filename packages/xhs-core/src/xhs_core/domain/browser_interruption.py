@@ -4,8 +4,7 @@ from .managed_browser import ManagedBrowserState
 
 _STOPPED_READ = "受管浏览器已停止，这条读取任务没做完，可以直接重试"
 _NOT_RUNNING_READ = (
-    "受管浏览器已经不在运行，这条读取任务没做完。"
-    "到「设置 → 连接方式」里启动它，再重试"
+    "受管浏览器已经不在运行，这条读取任务没做完。到「设置 → 连接方式」里启动它，再重试"
 )
 _TIMEOUT_READ = "受管浏览器一直没有响应，这条读取任务已中断，可以直接重试"
 _DISCONNECTED_READ = "和受管浏览器的连接断开了，这条读取任务已中断，可以直接重试"
