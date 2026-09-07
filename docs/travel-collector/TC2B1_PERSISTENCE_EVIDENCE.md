@@ -7,6 +7,14 @@ PHASE=TC2B1-CORE-SQLITE-IMPLEMENTATION
 BASELINE_COMMIT=a373ae02496531145f9292f668542fcf487b9773
 ```
 
+R1 repair chain:
+
+```text
+TC2B1_R1_REPAIR_COMMIT=ba74e83913bb61d26f9def847b231dd2c26f3ee8
+TC2B1_R1_TEST_COMMIT=57c79633dbe41e93bc0c91033f6e0b8f6ee609f1
+TC2B1_R1_EVIDENCE_BASE=c4c5e0f845614373009330f94c9f59d920d2842c
+```
+
 ## Implementation boundary
 
 - `xhs-core` 定义 `CollectionBoard`、`CollectionSnapshot`、`CollectionSnapshotItem`、`CollectionFeedAccessContext`、`CollectionStatus`、导入命令、fingerprint 和 `CollectionRepository` port。
@@ -75,7 +83,7 @@ RUFF_FORMAT=PASS
 PYTEST=PASS
 PYTEST_TOTAL=645
 PYTEST_FAILED=0
-COVERAGE=91.12%
+COVERAGE=91.23%
 COVERAGE_GATE=PASS (>=85%)
 ```
 
