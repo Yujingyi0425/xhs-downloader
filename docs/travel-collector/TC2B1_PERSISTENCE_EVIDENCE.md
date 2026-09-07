@@ -30,18 +30,50 @@ RESTART_PERSISTENCE=新 repository instance 读取 board、latest/history、memb
 TOKEN_AT_REST=仅 collection_feed 保存 latest raw synthetic token；snapshot/membership 不含 token
 TOKEN_REFRESH=仅 new request observation 刷新 latest token
 CORE_TOKEN_REDACTION=SecretStr repr 与 synthetic validation/error text 不泄露 token sentinel
+IDEMPOTENT_RESULT_REPLAY=PASS
+RESULT_PREPARED_BEFORE_COMMIT=PASS
+POST_COMMIT_FAILURE_WINDOW_CLOSED=PASS
+TOKEN_SENTINEL_ACTUALLY_EXERCISED=YES
+LOG_REDACTION=PASS
+EXCEPTION_REDACTION=PASS
 ```
 
-覆盖的 synthetic tests 包括空集、1/50/500 条目、增删改序、重复 feed、request retry/conflict、token refresh、mid-import failure rollback、并发 revision、FK enforcement、重启恢复、历史/latest 读取及 token redaction。
+覆盖的 synthetic tests 包括空集、1/50/500 条目、增删改序、重复 feed、request retry/conflict、token refresh、mid-import failure rollback、COMMIT 前结果准备失败、并发 revision、真实 FK constraint、重启恢复、历史/latest 读取及 token redaction。
+
+关键 pytest nodeid 映射：
+
+| Contract | pytest nodeid |
+|---|---|
+| P03 / P04 / P29–P31 | `tests/infrastructure/test_collection_repository.py::test_empty_and_large_imports_are_synthetic_and_fk_enabled` |
+| P05 / P18 / P19 | `tests/infrastructure/test_collection_contracts.py::test_duplicate_feed_and_token_sentinel_are_redacted` |
+| P06 / P37 | `tests/infrastructure/test_collection_repository.py::test_request_idempotency_conflict_and_token_only_retry` |
+| P10 | `tests/infrastructure/test_collection_contracts.py::test_reorder_changes_fingerprint_but_not_set_diff` |
+| P12 / P20 / P43 / P44 | `tests/infrastructure/test_collection_repository.py::test_exact_rollback_for_new_and_existing_board`、`test_fk_constraint_and_pre_commit_result_rollback` |
+| P34 / P35 / P36 / P38 | `tests/infrastructure/test_collection_repository.py::test_concurrent_imports_get_distinct_revisions`、`test_request_idempotency_conflict_and_token_only_retry`、`test_new_request_refreshes_token_and_restart_reads_state` |
+| P42 | `tests/infrastructure/test_collection_contracts.py::test_fk_constraint_and_pre_commit_result_rollback` |
+
+```text
+EMPTY_IMPORT=PASS
+ONE_ITEM_IMPORT=PASS
+FIFTY_ITEM_IMPORT=PASS
+FIVE_HUNDRED_ITEM_IMPORT=PASS
+DUPLICATE_FEED_REJECTED=PASS
+REORDER_FINGERPRINT_CHANGED=PASS
+REORDER_DIFF_CORRECT=PASS
+IDEMPOTENT_RESULT_REPLAY=PASS
+NEW_BOARD_EXACT_ROLLBACK=PASS
+EXISTING_BOARD_EXACT_ROLLBACK=PASS
+FOREIGN_KEY_CONSTRAINT_BEHAVIOR=PASS
+```
 
 ## Toolchain result
 
 ```text
-TC2B1_TARGETED_TESTS=PASS (7 passed)
+TC2B1_TARGETED_TESTS=PASS (10 collection tests; 15 including architecture validation)
 RUFF_CHECK=PASS
 RUFF_FORMAT=PASS
 PYTEST=PASS
-PYTEST_TOTAL=642
+PYTEST_TOTAL=645
 PYTEST_FAILED=0
 COVERAGE=91.12%
 COVERAGE_GATE=PASS (>=85%)
