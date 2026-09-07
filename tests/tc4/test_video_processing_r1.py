@@ -3,11 +3,14 @@
 from asyncio import to_thread
 from fractions import Fraction
 from pathlib import Path
+from typing import ClassVar
 
 import av
 import pytest
+from xhs_adapters.sqlite.video_content import SqliteCollectionVideoContentRepository
 from xhs_adapters.video import PyAvVideoInspector, SafeVideoArtifactStore, _ocr_text
 from xhs_core.domain import (
+    CollectionVideoContent,
     FeedMediaResource,
     FeedMediaResult,
     VideoProcessingStatus,
@@ -18,6 +21,7 @@ from xhs_core.domain import (
 
 class _Response:
     status_code = 200
+    headers: ClassVar[dict[str, str]] = {}
 
     def __init__(self, data: bytes) -> None:
         self._data = data
@@ -28,7 +32,7 @@ class _Response:
     async def __aexit__(self, *_args):
         return None
 
-    async def aiter_bytes(self):
+    async def aiter_bytes(self, _chunk_size=None):
         yield self._data
 
 
@@ -37,7 +41,7 @@ class _Gateway:
         self.data = data
         self.url = None
 
-    def stream(self, url: str):
+    def stream(self, url: str, headers=None):
         self.url = url
         return _Response(self.data)
 
@@ -124,3 +128,54 @@ def test_video_status_and_ocr_schema() -> None:
     )
     assert _ocr_text([[[[[0, 0]], ("日本語", 0.99)]]]) == "日本語"
     assert _ocr_text([[[[[0, 0]], ("A", 0.9), "debug-path"]]]) == "A"
+
+
+@pytest.mark.asyncio
+async def test_running_rows_are_recovered_after_repository_reopen(
+    tmp_path: Path,
+) -> None:
+    """验证重启回收 RUNNING 且保留单调 attempt fencing。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+    """
+    repository = SqliteCollectionVideoContentRepository(tmp_path / "video.db")
+    running = CollectionVideoContent(
+        snapshot_id="snapshot",
+        feed_id="feed",
+        status=VideoProcessingStatus.RUNNING,
+        attempt_count=1,
+    )
+    await repository.save(running)
+
+    reopened = SqliteCollectionVideoContentRepository(tmp_path / "video.db")
+    assert await reopened.recover_running("snapshot") == 1
+    recovered = await reopened.get("snapshot", "feed")
+    assert recovered is not None
+    assert recovered.status is VideoProcessingStatus.FAILED_RETRYABLE
+    assert recovered.attempt_count == 1
+
+
+@pytest.mark.asyncio
+async def test_late_attempt_cas_returns_authoritative_row(tmp_path: Path) -> None:
+    """验证旧 attempt 的迟到写入不覆盖权威结果。
+
+    Args:
+        tmp_path: pytest 提供的临时目录。
+    """
+    repository = SqliteCollectionVideoContentRepository(tmp_path / "video.db")
+    stale = CollectionVideoContent(
+        snapshot_id="snapshot",
+        feed_id="feed",
+        status=VideoProcessingStatus.RUNNING,
+        attempt_count=1,
+    )
+    await repository.save(stale)
+    authoritative = stale.model_copy(
+        update={"status": VideoProcessingStatus.SUCCEEDED, "attempt_count": 2}
+    )
+    await repository.save(authoritative)
+
+    assert await repository.save_if_attempt(stale, expected_attempt=1) is False
+    current = await repository.get("snapshot", "feed")
+    assert current == authoritative
