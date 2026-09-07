@@ -27,14 +27,14 @@ class CollectionImportRequest(BaseModel):
     )
 
 
-class CollectionDiffCounts(BaseModel):
-    """相邻快照的非敏感差异计数。"""
+class CollectionDiffResponse(BaseModel):
+    """相邻快照的非敏感 membership 差异。"""
 
     model_config = ConfigDict(extra="forbid")
 
-    added_count: int = Field(ge=0)
-    retained_count: int = Field(ge=0)
-    removed_count: int = Field(ge=0)
+    added: list[str]
+    removed: list[str]
+    retained: list[str]
 
 
 class CollectionSnapshotResponse(BaseModel):
@@ -46,11 +46,12 @@ class CollectionSnapshotResponse(BaseModel):
     source_type: str
     board_id: str
     board_revision: int = Field(ge=1)
+    request_id: str
     captured_at: datetime
     item_count: int = Field(ge=0)
     fingerprint: str
     status: CollectionStatus
-    diff: CollectionDiffCounts
+    diff: CollectionDiffResponse
 
 
 class CollectionSnapshotListItem(BaseModel):

@@ -100,6 +100,17 @@ class CollectionRepository(Protocol):
         """
         ...
 
+    async def get_snapshot_diff(self, snapshot_id: str) -> CollectionDiff:
+        """读取快照与前一 revision 的 membership 差异。
+
+        Args:
+            snapshot_id: 快照唯一标识。
+
+        Returns:
+            相邻快照的差异；首个快照与空集比较。
+        """
+        ...
+
     async def get_feed_access_context(
         self, feed_id: str
     ) -> CollectionFeedAccessContext | None:

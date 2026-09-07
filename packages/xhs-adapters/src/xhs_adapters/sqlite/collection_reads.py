@@ -1,6 +1,7 @@
 """收藏快照 SQLite 读取能力。"""
 
 from xhs_core.domain.collection import (
+    CollectionDiff,
     CollectionFeedAccessContext,
     CollectionSnapshot,
     CollectionSnapshotItem,
@@ -120,6 +121,35 @@ class CollectionReadMixin:
             row = await cursor.fetchone()
             return access_context_from_row(row) if row else None
 
+    async def get_snapshot_diff(self, snapshot_id: str) -> CollectionDiff:
+        """读取快照与前一 revision 的 membership 差异，不读取 token。
+
+        Args:
+            snapshot_id: 快照唯一标识。
+
+        Returns:
+            当前快照与前一 revision 的 membership 差异。
+        """
+        snapshot = await self.get_snapshot(snapshot_id)
+        if not snapshot:
+            return CollectionDiff(added=[], removed=[], retained=[])
+        history = await self.list_snapshots(
+            snapshot.source_type, snapshot.board_id, snapshot.board_revision
+        )
+        previous = next(
+            (
+                candidate
+                for candidate in history
+                if candidate.board_revision == snapshot.board_revision - 1
+            ),
+            None,
+        )
+        previous_items = (
+            await self.list_snapshot_items(previous.snapshot_id) if previous else []
+        )
+        current_items = await self.list_snapshot_items(snapshot_id)
+        return _diff(previous_items, current_items)
+
     async def _find_by_request(self, database, request_id: str):
         cursor = await database.execute(
             "SELECT * FROM collection_snapshot WHERE request_id=?", (request_id,)
@@ -159,3 +189,13 @@ class CollectionReadMixin:
 
     def _connect(self):
         return connect(self._database)
+
+
+def _diff(previous_items, current_items) -> CollectionDiff:
+    previous = {item.feed_id for item in previous_items}
+    current = {item.feed_id for item in current_items}
+    return CollectionDiff(
+        added=sorted(current - previous),
+        removed=sorted(previous - current),
+        retained=sorted(current & previous),
+    )

@@ -1,6 +1,8 @@
 """API 层的领域异常到 HTTP 响应映射。"""
 
 from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from xhs_core.domain import (
     AccountConsistencyError,
@@ -30,6 +32,19 @@ def register_exception_handlers(api: FastAPI) -> None:
                 "code": error.code.value,
             },
         )
+
+    @api.exception_handler(RequestValidationError)
+    async def handle_request_validation_error(
+        request: Request,
+        _: RequestValidationError,
+    ) -> JSONResponse:
+        """为 collection pre-route validation 返回固定的脱敏错误。"""
+        if request.url.path.startswith("/collections/"):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "收藏夹请求格式无效"},
+            )
+        return await request_validation_exception_handler(request, _)
 
     @api.exception_handler(BrowserTaskLeaseConflictError)
     async def handle_browser_lease_conflict(
