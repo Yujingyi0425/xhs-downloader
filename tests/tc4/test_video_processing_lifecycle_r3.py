@@ -148,7 +148,9 @@ async def test_service_restart_recovers_running_and_fences_stale_worker(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["access", "acquire", "download", "partial"])
+@pytest.mark.parametrize(
+    "failure", ["access", "acquire", "download", "partial", "identity"]
+)
 async def test_video_failures_are_explicit_and_non_success(
     tmp_path: Path, failure: str
 ) -> None:
@@ -198,7 +200,7 @@ async def test_video_failures_are_explicit_and_non_success(
         if failure == "acquire":
             raise DownloadError("synthetic acquisition failure")
         return FeedMediaResult(
-            feed_id="feed",
+            feed_id="other-feed" if failure == "identity" else "feed",
             note_type="video",
             media=[
                 FeedMediaResource(

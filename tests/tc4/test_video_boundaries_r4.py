@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from xhs_api.collection_models import VideoProcessRequest
 from xhs_api.videos import create_video_router
 from xhs_core.domain import CollectionSnapshotItem, CollectionVideoContent
 
@@ -67,3 +68,12 @@ def test_tc4_synthetic_suite_has_no_external_xhs_media_target() -> None:
         text = path.read_text(encoding="utf-8")
         assert "xiaohongshu" + ".com" not in text
         assert "api." + "openai.com" not in text
+
+
+def test_video_processing_defaults_to_source_retention() -> None:
+    """验证默认 video processing 请求保留 downstream source artifact。
+
+    Returns:
+        None.
+    """
+    assert VideoProcessRequest().keep_source is True
