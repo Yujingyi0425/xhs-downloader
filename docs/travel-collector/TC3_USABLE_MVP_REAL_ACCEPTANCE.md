@@ -14,8 +14,10 @@ CANARY_INITIAL_LIMIT=3
 CANARY_INITIAL_SUCCESS=1
 CANARY_INITIAL_RETRYABLE_FAILURE=2
 CANARY_RETRY_LIMIT=5
-CANARY_FINAL_SUCCESS=3
-CANARY_FINAL_RETRYABLE_FAILURE=2
+CANARY_FINAL_SUCCESS=5
+CANARY_FINAL_RETRYABLE_FAILURE=0
+CANARY_RETRY_ATTEMPT=2
+CANARY_UNIQUE_FEEDS=5
 REAL_CANARY=PASS
 INTERNAL_IMPLEMENTATION_DEFECT=NO
 
@@ -37,6 +39,6 @@ TC3_B3_WORK_STARTED=NO
 TC4_WORK_STARTED=NO
 ```
 
-两条 retryable failure 的原因是外部 provider 页面不兼容；未发现 internal implementation defect。验收只处理了 5 条上限内的记录，未执行完整收藏夹。
+首次尝试中两条 retryable failure 的原因是外部 provider 页面不兼容；随后在同一 5 个 feed 上重试并全部成功，未发现 internal implementation defect。验收只处理了 5 个唯一 feed，未执行完整收藏夹。
 
 已知限制：restart recovery deferred to TC3-B3；`already_succeeded` summary counter 表示总成功数而非严格的既有成功数；coordinator 存在窄的 post-completion race 窗口。
