@@ -23,6 +23,7 @@ from .browser import create_browser_router
 from .browser_operations import create_browser_operation_router
 from .capability_reads import create_capability_read_router
 from .capability_runtime import create_browser_readiness
+from .collections import create_collection_router
 from .error_handlers import register_exception_handlers
 from .extension import create_extension_router
 from .login import create_login_router
@@ -176,6 +177,16 @@ def create_api(
     api.include_router(create_post_router())
     api.include_router(create_extension_router(dependencies.client_records))
     api.include_router(create_task_router())
+    collection_import = getattr(dependencies, "collection_import", None)
+    collection_repository = getattr(dependencies, "collection_repository", None)
+    if collection_import is not None and collection_repository is not None:
+        api.include_router(
+            create_collection_router(
+                collection_import,
+                collection_repository,
+                dependencies.publication.credentials,
+            )
+        )
     api.include_router(
         create_publication_router(
             dependencies.publication.drafts,

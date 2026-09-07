@@ -14,10 +14,11 @@ from xhs_adapters.config import AppSettings
 from xhs_adapters.settings_repository import DotenvSettingsRepository
 from xhs_adapters.sqlite import (
     SqliteClientRecordRepository,
+    SqliteCollectionRepository,
     SqlitePostRepository,
     SqliteTaskRepository,
 )
-from xhs_core.application import AtomicClientSlot
+from xhs_core.application import AtomicClientSlot, CollectionImportService
 from xhs_core.domain.ports import (
     ClientRecordRepository,
     PostRepository,
@@ -40,6 +41,8 @@ class ApiDependencies:
     client_records: ClientRecordRepository
     download_tasks: TaskRepository
     posts: PostRepository
+    collection_repository: SqliteCollectionRepository
+    collection_import: CollectionImportService
     publication: PublicationRuntime
     settings: SettingsManager
 
@@ -83,12 +86,15 @@ def create_api_dependencies(
 
         await capabilities.replace(build, on_commit=commit)
 
+    collection_repository = SqliteCollectionRepository(database)
     return ApiDependencies(
         browser=browser,
         capabilities=capabilities,
         client_records=SqliteClientRecordRepository(database),
         download_tasks=SqliteTaskRepository(database),
         posts=SqlitePostRepository(database),
+        collection_repository=collection_repository,
+        collection_import=CollectionImportService(collection_repository),
         publication=publication,
         settings=SettingsManager(
             settings,
