@@ -149,7 +149,16 @@ class BrowserExecutionService:
             persisted_result = dict(normalized_result)
             persisted_result.pop("xsec_token", None)
             await self._ephemeral_channel.publish_result(task.task_id, transient_result)
-        log_discarded_reason(task_id, status, message)
+        ephemeral_detail = (
+            task.kind is BrowserTaskKind.GET_FEED_DETAIL
+            and "xsec_token" not in task.payload
+        )
+        log_discarded_reason(
+            task_id,
+            status,
+            message,
+            redact_raw=ephemeral_detail,
+        )
         now = datetime.now(UTC)
         terminal = status in _TERMINAL
         updated = task.model_copy(

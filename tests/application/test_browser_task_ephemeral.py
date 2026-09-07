@@ -2,12 +2,15 @@
 
 import pytest
 from aiosqlite import connect
+from loguru import logger
+from pydantic import SecretStr
 from xhs_adapters.sqlite import SqliteBrowserTaskRepository
 from xhs_core.application import (
     BrowserExecutionService,
     BrowserTaskEphemeralInputChannel,
     BrowserTaskService,
 )
+from xhs_core.application.browser_task_ephemeral import _PendingInput, _PendingResult
 from xhs_core.domain import BrowserDriver, BrowserTaskError, BrowserTaskStatus
 
 SENTINEL = "synthetic-browser-ephemeral-xsec"
@@ -94,6 +97,68 @@ async def test_success_result_is_transient_but_persisted_task_is_redacted(
     assert delivered.result is not None
     assert delivered.result["xsec_token"] == SENTINEL
     assert SENTINEL not in (await repository.get(task.task_id)).model_dump_json()
+
+
+@pytest.mark.parametrize(
+    "status", [BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW]
+)
+@pytest.mark.asyncio
+async def test_ephemeral_failure_logs_never_include_raw_secret(
+    tmp_path, status
+) -> None:
+    """Verify ephemeral failure logs suppress executor messages for terminal states.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+        status: Terminal status being exercised.
+    """
+    repository, tasks, execution, _ = await _services(tmp_path)
+    task = await tasks.submit_ephemeral_feed_detail(_payload())
+    claim = await execution.claim("synthetic-extension")
+    assert claim is not None
+    messages: list[str] = []
+    sink_id = logger.add(messages.append, format="{message}")
+    try:
+        await execution.update(
+            task.task_id,
+            claim.lease_token,
+            status,
+            "navigation failed xsec_token=synthetic-ephemeral-log-xsec",
+        )
+    finally:
+        logger.remove(sink_id)
+    captured = "\n".join(messages)
+    assert "synthetic-ephemeral-log-xsec" not in captured
+    assert "xsec_token=" not in captured
+    persisted = await repository.get(task.task_id)
+    assert persisted is not None
+    assert "xsec_token=" not in persisted.message
+
+
+@pytest.mark.asyncio
+async def test_ephemeral_claim_repr_redacts_but_data_keeps_secret(tmp_path) -> None:
+    """Verify transient claim data remains available while repr stays safe.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+    """
+    _, tasks, execution, _ = await _services(tmp_path)
+    await tasks.submit_ephemeral_feed_detail(_payload("synthetic-ephemeral-repr-xsec"))
+    claim = await execution.claim("synthetic-extension")
+    assert claim is not None
+    assert "synthetic-ephemeral-repr-xsec" not in repr(claim)
+    assert "synthetic-ephemeral-repr-xsec" not in repr(claim.task)
+    assert claim.task.model_dump()["payload"]["xsec_token"] == (
+        "synthetic-ephemeral-repr-xsec"
+    )
+
+
+def test_ephemeral_pending_values_redact_secret_repr() -> None:
+    """Verify channel internals do not expose input or result secrets."""
+    input_value = _PendingInput(SecretStr("synthetic-ephemeral-repr-xsec"), 1)
+    result_value = _PendingResult({"xsec_token": "synthetic-ephemeral-repr-xsec"}, 1)
+    assert "synthetic-ephemeral-repr-xsec" not in repr(input_value)
+    assert "synthetic-ephemeral-repr-xsec" not in repr(result_value)
 
 
 @pytest.mark.asyncio

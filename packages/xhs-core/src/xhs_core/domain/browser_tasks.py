@@ -65,7 +65,7 @@ class BrowserTask(BaseModel):
     task_id: str = Field(min_length=1, max_length=128)
     request_id: str | None = Field(default=None, max_length=128)
     kind: BrowserTaskKind
-    payload: dict[str, JsonValue] = Field(default_factory=dict)
+    payload: dict[str, JsonValue] = Field(default_factory=dict, repr=False)
     target_driver: BrowserDriver = BrowserDriver.EXTENSION
     status: BrowserTaskStatus = BrowserTaskStatus.QUEUED
     result: dict[str, JsonValue] | None = None

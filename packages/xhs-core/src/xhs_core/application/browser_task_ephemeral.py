@@ -24,7 +24,7 @@ class _PendingInput:
 
 @dataclass(slots=True)
 class _PendingResult:
-    result: dict[str, JsonValue]
+    result: dict[str, JsonValue] = field(repr=False)
     expires_at: float
 
 
