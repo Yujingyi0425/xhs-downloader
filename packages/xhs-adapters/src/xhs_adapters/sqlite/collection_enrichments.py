@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from xhs_core.domain.collection_enrichment import (
+    TERMINAL_ENRICHMENT_STATUSES,
     CollectionEnrichmentStatus,
     CollectionFeedDetail,
     CollectionFeedEnrichment,
@@ -125,7 +126,13 @@ class SqliteCollectionEnrichmentRepository:
             current = await self._get(
                 database, snapshot_id, feed_id, enrichment_version
             )
-            if current is None or current.status not in expected:
+            if (
+                current is None
+                or current.status not in expected
+                or current.status in TERMINAL_ENRICHMENT_STATUSES
+                or new_status is CollectionEnrichmentStatus.SUCCEEDED
+                or (error_code is not None and len(error_code) > 200)
+            ):
                 await database.rollback()
                 raise EnrichmentStateConflictError("enrichment 状态已变化")
             now = datetime.now(UTC)
