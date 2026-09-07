@@ -55,14 +55,15 @@ BOARD_TITLE_PERSISTED=NO by default: title is not required for identity and may 
 - `snapshot_id TEXT PRIMARY KEY`
 - `source_type TEXT NOT NULL`
 - `board_id TEXT NOT NULL`
+- `board_revision INTEGER NOT NULL`
 - `request_id TEXT NOT NULL UNIQUE`
 - `captured_at TEXT NOT NULL`
 - `item_count INTEGER NOT NULL`
 - `fingerprint TEXT NOT NULL`
 - `status TEXT NOT NULL`，TC2 只允许 `captured`
 - `FOREIGN KEYS`：`(source_type, board_id) REFERENCES collection_board(source_type, board_id)`
-- `UNIQUE`：`request_id`
-- `INDEXES`：`(source_type, board_id, captured_at DESC)`、`(source_type, board_id, status, captured_at DESC)`
+- `UNIQUE`：`request_id`；`(source_type, board_id, board_revision)`
+- `INDEXES`：`(source_type, board_id, board_revision DESC)`、`(source_type, board_id, status, board_revision DESC)`；`captured_at` 仅为 observation timestamp，不作为 latest 的唯一排序依据
 - `SENSITIVE_FIELDS`：无 token；fingerprint 只由稳定非敏感字段构成
 
 ### `collection_feed`
@@ -97,13 +98,20 @@ PROPOSED_TABLES=collection_board, collection_snapshot, collection_feed, collecti
 
 ```text
 SNAPSHOT_HISTORY_MODEL=append-only immutable collection_snapshot plus collection_snapshot_item rows
+SNAPSHOT_ORDER_MODEL=BOARD_LOCAL_MONOTONIC_REVISION
+BOARD_REVISION_UNIQUE=UNIQUE(source_type, board_id, board_revision)
 DIFF_MODEL=previous feed_id set vs current feed_id set: added=current-previous, removed=previous-current, retained=intersection; source_order comparison separately reports reorder
 ITEM_IDENTITY=feed_id globally, membership scoped by snapshot_id
 ITEM_UNIQUE_CONSTRAINT=(snapshot_id, feed_id) and (snapshot_id, source_order)
 SNAPSHOT_FINGERPRINT_POLICY=SHA-256 of canonical source_type, board_id, and ordered feed_id list; excludes xsec_token, Cookie, capability token, title, author, and URLs
 ```
 
-fingerprint 用于识别内容等价，不作为唯一约束；因此同一个 request retry 由 `request_id` 去重，而用户主动重新扫描相同内容仍可创建新 snapshot。`source_order` 使用 `0..N-1`，保证稳定导出与可重现 diff。输入中重复 feed 必须在 application boundary 被拒绝或按明确规则归一化；本设计选择拒绝重复并返回 validation error，避免悄悄改变用户顺序。
+每个 `(source_type, board_id)` 的 `board_revision` 从 1 开始单调递增。一次新 observation import 在同一个 `BEGIN IMMEDIATE` 事务中读取当前最大 revision 并分配 `+1`；同 `request_id` 的成功 retry 返回原 snapshot，不创建新 revision。latest 按最大 `board_revision` 确定，diff 比较相邻的 `N` 与 `N-1`，不依赖 `captured_at` 的唯一性。fingerprint 用于识别内容等价，不作为唯一约束。`source_order` 使用 `0..N-1`，保证稳定导出与可重现 diff。输入中重复 feed 必须在 application boundary 被拒绝，避免悄悄改变用户顺序。
+
+```text
+REQUEST_IDEMPOTENCY_POLICY=同 request_id + 同 board identity + 同 ordered membership fingerprint 返回原 snapshot；不得创建 snapshot 或增加 board_revision
+IDEMPOTENCY_CONFLICT_POLICY=同 request_id 若 board identity 或 ordered membership fingerprint 不同，HTTP 409 IDEMPOTENCY_CONFLICT；仅 token 不同按 retry 处理且不得静默刷新 token
+```
 
 ## Token threat model
 
@@ -113,6 +121,8 @@ TC1 的 `xsec_token` 是详情执行上下文，不是可展示的收藏夹属�
 TOKEN_AT_REST_POLICY=仅在本机 SQLite collection_feed.latest_xsec_token 保存最新 raw token；限制工作目录权限；不新增自制加密或密钥系统
 TOKEN_HISTORY_MODEL=membership snapshot 不保存 token；collection_feed 只保留 feed-level latest token
 TOKEN_REFRESH_MODEL=同一 feed 后续出现 nonempty token 时 latest token wins，并更新 token_updated_at；空 token 拒绝覆盖有效 token
+TOKEN_VALIDATION_ERROR_POLICY=REDACTED
+TOKEN_SENTINEL_REGRESSION_REQUIRED=YES
 ```
 
 风险和边界：
@@ -133,16 +143,15 @@ XSEC_TOKEN_EXPORT=NO
 
 ## Atomic import
 
-```text
-IMPORT_TRANSACTION_BOUNDARY=一次 import request 从 create board 到 snapshot metadata、feed upsert、membership insert、count/fingerprint validation 全部位于一个 BEGIN/COMMIT；任何 validation、唯一约束或写入异常执行 ROLLBACK
-```
-
 逻辑顺序：
 
 ```text
 BEGIN IMMEDIATE
   create-or-touch board
-  create snapshot with request_id
+  check request_id and compare board identity + membership fingerprint
+  return original snapshot on an identical retry; otherwise reject conflict
+  allocate board_revision=max(board_revision)+1 for this board
+  create snapshot with request_id and board_revision
   upsert each feed and latest nonempty token
   insert N snapshot membership rows with source_order
   validate inserted count == input unique count
@@ -151,12 +160,18 @@ BEGIN IMMEDIATE
 COMMIT
 ```
 
-失败不得留下 snapshot 37/50 或孤立 feed context。未来必须有 `TRANSACTION_ROLLBACK_MID_IMPORT`：在第 N 条 synthetic item 强制 repository failure，然后断言 board 可安全存在但 snapshot、membership 和本次新增 feed context 的可见状态符合明确 rollback 规则；推荐整个 import 的新写入全部回滚。
+失败不得留下 snapshot 37/50 或孤立 feed context。事务失败后的状态必须满足 `POST_STATE == PRE_IMPORT_STATE`：若 board 原来不存在，不得留下 board；若 board 原来存在，其 `updated_at` 和 revision 不得改变；snapshot、membership、本次新增 feed 和本次 token refresh 均不得留下或生效。未来必须有 `TRANSACTION_ROLLBACK_MID_IMPORT`：在第 N 条 synthetic item 强制 repository failure，然后精确比较失败前后的可见状态。
+
+```text
+IMPORT_TRANSACTION_BOUNDARY=一次 import request 从 idempotency check、board revision 分配、snapshot metadata、feed upsert、membership insert、count/fingerprint validation 全部位于一个 BEGIN IMMEDIATE/COMMIT；任何失败 ROLLBACK
+FAILED_IMPORT_STATE_POLICY=EXACT_PRE_IMPORT_STATE
+```
 
 ## Idempotency and restart
 
 ```text
-REQUEST_IDEMPOTENCY=required client request_id persisted UNIQUE on collection_snapshot; retry with same request_id returns the original snapshot/result and never creates a second snapshot
+REQUEST_IDEMPOTENCY=required client request_id persisted UNIQUE on collection_snapshot; identical retry returns the original snapshot/result and never creates a second snapshot or revision
+REQUEST_IDEMPOTENCY_CONFLICT_POLICY=不同 board identity 或不同 ordered membership fingerprint 返回 HTTP 409 IDEMPOTENCY_CONFLICT；仅 token 不同按 retry 处理且不得刷新 token
 CONTENT_EQUIVALENCE=ordered feed list fingerprint is comparable but not a uniqueness constraint; separate user scan gets a new request_id and a new observation snapshot even when equivalent
 PERSISTED_STATE=boards, immutable snapshots, snapshot memberships, feed latest access context, request id, source order, captured timestamps, captured status
 EPHEMERAL_STATE=current HTTP request object, in-memory worker/future, temporary locks, active browser panel/session, progress callbacks
@@ -174,26 +189,39 @@ Extension 继续只负责当前 board 页面捕获。它通过 localhost API 提
 EXTENSION_DIRECT_SQLITE=NO
 ```
 
-内部 import command 的最小字段：`request_id`、`source_type`、`board_id`、`items[]`；每项必需 `feed_id`、nonempty `xsec_token`、`source_order`，可选 title/author/cover 只作为当前 UI 证据，默认不持久化。公共 response 只返回 IDs、counts、timestamps、status、fingerprint 和 diff summary，不返回任何 token，也不默认返回 optional UI fields。
+内部 import command 的最小字段：`request_id`、`items[]`；每项必需 `feed_id`、nonempty `xsec_token`、`source_order`。`source_type` 和 `board_id` 只来自 URL path，body 不重复这些字段；TC2 不接收 title、author、cover 或完整 URL。公共 response 只返回 IDs、counts、timestamps、status、fingerprint 和 diff summary，不返回任何 token。
+
+```text
+IMPORT_BOARD_IDENTITY_SOURCE=PATH_ONLY
+TC2_IMPORT_OPTIONAL_UI_METADATA=NO
+COLLECTION_API_CAPABILITY_REQUIRED=YES
+```
 
 建议最小 API（只设计）：
 
 - `POST /collections/{source_type}/{board_id}/imports`
-  - `IMPORT_REQUEST={request_id, source_type, board_id, items[{feed_id,xsec_token,source_order,title?,author?,cover?}]}`。
+  - `IMPORT_REQUEST={request_id, items[{feed_id,xsec_token,source_order}]}`；path parameters 是唯一 board identity authority。
   - `IMPORT_RESPONSE={snapshot_id, source_type, board_id, captured_at, item_count, fingerprint, status, added_count, retained_count, removed_count}`。
 - `GET /collections/{source_type}/{board_id}/snapshots?limit=...`
-  - `LIST_RESPONSE={items[{snapshot_id,captured_at,item_count,fingerprint,status}], next_cursor?}`。
+  - `LIST_RESPONSE={items[{snapshot_id,board_revision,captured_at,item_count,fingerprint,status}], next_cursor?}`；按 `board_revision DESC` 查询。
 - `GET /collections/{source_type}/{board_id}/snapshots/{snapshot_id}`
-  - `DETAIL_RESPONSE={snapshot_id, board identity, captured_at, item_count, status, fingerprint, items[{feed_id,source_order}], diff?}`。
+  - `DETAIL_RESPONSE={snapshot_id,board_revision,board identity,captured_at,item_count,status,fingerprint,items[{feed_id,source_order}],diff?}`；diff 只比较相邻 revision。
 
-这些路径只是草案，实际 route naming 应在 TC2B 复用现有 `create_*_router`、Pydantic model 和 capability dependency。内部 sensitive input model 与公共 output model 必须结构分离：
+这些路径只是草案，实际 route naming 应在 TC2B 复用现有 `create_*_router`、Pydantic model 和 capability dependency。POST import、GET snapshot list、GET snapshot detail 全部必须复用现有 extension capability authentication；response 不含 token 也不能放宽读取鉴权。内部 sensitive input model 与公共 output model 必须结构分离：
 
 ```text
 SENSITIVE_INPUT_MODEL=CollectionImportCommand，独立 Pydantic model，含 nonempty xsec_token，字段 repr/日志脱敏
 PUBLIC_OUTPUT_MODEL=CollectionSnapshotResponse / CollectionSnapshotListItem / CollectionSnapshotDetail，类型中根本不存在 xsec_token 字段
 TOKEN_REPR_POLICY=token-bearing input/domain wrapper 默认 repr 不显示 token
 TOKEN_LOG_POLICY=logger 参数和异常/HTTP detail 不接受 raw token；只记录安全分类和 snapshot/feed opaque ID
+TOKEN_SENTINEL=synthetic-secret-token-never-leak
+TOKEN_ERROR_REDACTION_SCOPE=missing/empty/invalid token、Pydantic 422、FastAPI error detail、exception str/repr、logger、repository/application failure、public response 均不得出现 sentinel
+FOREIGN_KEY_ENFORCEMENT_REQUIRED=YES
 ```
+
+TC2B 必须使用上面的 synthetic sentinel 做回归测试；`repr=False` 只是辅助措施，不是错误响应、异常或日志脱敏的充分保证。
+
+SQLite 外键不能假设默认开启。每个执行 collection relational operation 的 connection 必须确认 `PRAGMA foreign_keys = ON`；TC2B 可安全增强 shared connection helper，或在 collection repository 的连接 setup 中完成，但必须由测试证明。
 
 ## Capacity and test matrix
 
@@ -212,8 +240,12 @@ TC2B synthetic test matrix：
 | P27–P28 | capability auth、localhost boundary |
 | P29–P31 | empty/repeatable init、existing DB restart |
 | P32–P33 | source_order/feed uniqueness |
+| P34–P35 | concurrent/sequential board revision；request retry 不增加 revision |
+| P36–P39 | reused request conflict、token-only retry、new request token refresh、path/body identity |
+| P40–P41 | token sentinel 全链路脱敏；所有 collection GET/POST capability auth |
+| P42–P45 | FK enforcement；new/existing board exact rollback；same captured_at 仍按 revision 排序 |
 
-全部 fixture 使用 synthetic IDs/token/title/author；不使用真实 Japan 数据。
+全部 fixture 使用 synthetic IDs/token/title/author；不使用真实 Japan 数据。P34–P45 必须全部为 synthetic regression。
 
 ## TC2B implementation file plan（计划，不在 TC2A 创建）
 
@@ -227,7 +259,7 @@ TC2B synthetic test matrix：
 - `apps/api/src/xhs_api/bootstrap.py`：composition root 注入新 adapter/application service。
 - `packages/xhs-contracts/src/index.ts`：仅在 HTTP/Extension 共享字段确实需要时增加不含 token 的公共类型；不把 raw token 放进 public response type。
 - `apps/extension/src/`：仅在 TC2B 需要把现有内存扫描结果提交 import endpoint 时修改；不得出现 SQLite 依赖。
-- `tests/domain/`、`tests/application/`、`tests/infrastructure/`、`tests/interfaces/`：覆盖 P01–P33 的 synthetic regression。
+- `tests/domain/`、`tests/application/`、`tests/infrastructure/`、`tests/interfaces/`：覆盖 P01–P45 的 synthetic regression，包括 revision、冲突、脱敏、鉴权、FK 和精确回滚。
 
 ## Known risks
 
@@ -250,4 +282,3 @@ TC2B synthetic test matrix：
 - board title/用户 label 是否进入后续产品层；当前安全默认是不持久化。
 - SQLite 外键启用、数据库 busy timeout 与 collection import transaction helper 的具体实现接口。
 - snapshot retention、删除 board 的级联/保留策略，以及未来 export 对历史 snapshot 的选择。
-
