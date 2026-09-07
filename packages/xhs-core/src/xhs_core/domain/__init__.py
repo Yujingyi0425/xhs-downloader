@@ -48,6 +48,17 @@ from .collection import (
     CollectionStatus,
     collection_fingerprint,
 )
+from .collection_enrichment import (
+    ENRICHMENT_VERSION,
+    TERMINAL_ENRICHMENT_STATUSES,
+    CollectionEnrichmentStatus,
+    CollectionFeedDetail,
+    CollectionFeedEnrichment,
+)
+from .collection_enrichment_ports import (
+    CollectionEnrichmentRepository,
+    EnrichmentStateConflictError,
+)
 from .collection_ports import CollectionIdempotencyConflictError, CollectionRepository
 from .errors import (
     BrowserTaskError,
@@ -111,6 +122,8 @@ from .publication import (
 )
 
 __all__ = [
+    "ENRICHMENT_VERSION",
+    "TERMINAL_ENRICHMENT_STATUSES",
     "AccountConsistencyError",
     "AccountConsistencyGuard",
     "AccountConsistencyStatus",
@@ -133,7 +146,11 @@ __all__ = [
     "ClientRecordStatus",
     "CollectionBoard",
     "CollectionDiff",
+    "CollectionEnrichmentRepository",
+    "CollectionEnrichmentStatus",
     "CollectionFeedAccessContext",
+    "CollectionFeedDetail",
+    "CollectionFeedEnrichment",
     "CollectionIdempotencyConflictError",
     "CollectionImportCommand",
     "CollectionImportItem",
@@ -148,6 +165,7 @@ __all__ = [
     "DownloadRecord",
     "DownloadTask",
     "DownloadTaskStatus",
+    "EnrichmentStateConflictError",
     "ExtensionPresence",
     "FeedAuthor",
     "FeedComment",

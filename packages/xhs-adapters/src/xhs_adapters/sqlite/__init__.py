@@ -2,6 +2,7 @@
 
 from .browser_tasks import SqliteBrowserTaskRepository
 from .client_records import SqliteClientRecordRepository
+from .collection_enrichments import SqliteCollectionEnrichmentRepository
 from .collections import SqliteCollectionRepository
 from .download_records import SqliteDownloadRepository
 from .download_tasks import SqliteTaskRepository
@@ -13,6 +14,7 @@ from .publication_tasks import SqlitePublicationTaskRepository
 __all__ = [
     "SqliteBrowserTaskRepository",
     "SqliteClientRecordRepository",
+    "SqliteCollectionEnrichmentRepository",
     "SqliteCollectionRepository",
     "SqliteDownloadRepository",
     "SqliteExtensionCredentialRepository",

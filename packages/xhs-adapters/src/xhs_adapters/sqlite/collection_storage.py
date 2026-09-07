@@ -84,6 +84,21 @@ async def create_collection_schema(connection: Connection) -> None:
             FOREIGN KEY (snapshot_id) REFERENCES collection_snapshot (snapshot_id),
             FOREIGN KEY (feed_id) REFERENCES collection_feed (feed_id)
         );
+        CREATE TABLE IF NOT EXISTS collection_feed_enrichment (
+            snapshot_id TEXT NOT NULL,
+            feed_id TEXT NOT NULL,
+            enrichment_version INTEGER NOT NULL CHECK (enrichment_version >= 1),
+            status TEXT NOT NULL,
+            detail_json TEXT NULL,
+            attempt_count INTEGER NOT NULL CHECK (attempt_count >= 0),
+            last_error_code TEXT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            enriched_at TEXT NULL,
+            PRIMARY KEY (snapshot_id, feed_id, enrichment_version),
+            FOREIGN KEY (snapshot_id, feed_id)
+                REFERENCES collection_snapshot_item (snapshot_id, feed_id)
+        );
         CREATE INDEX IF NOT EXISTS collection_board_updated
             ON collection_board (updated_at DESC);
         CREATE INDEX IF NOT EXISTS collection_snapshot_revision
@@ -94,6 +109,8 @@ async def create_collection_schema(connection: Connection) -> None:
             ON collection_snapshot_item (snapshot_id, source_order);
         CREATE INDEX IF NOT EXISTS collection_snapshot_item_feed
             ON collection_snapshot_item (feed_id, snapshot_id);
+        CREATE INDEX IF NOT EXISTS collection_feed_enrichment_snapshot
+            ON collection_feed_enrichment (snapshot_id, enrichment_version);
         """
     )
 
