@@ -113,7 +113,11 @@ async def test_success_result_still_requires_task_schema(tmp_path) -> None:
 
 
 async def test_get_feed_media_failure_preserves_safe_stage_and_code(tmp_path) -> None:
-    """确保媒体读取失败仍保留可定位边界的安全诊断。"""
+    """确保媒体读取失败仍保留可定位边界的安全诊断。
+
+    Args:
+        tmp_path: Pytest 提供的临时目录。
+    """
     repository = SqliteBrowserTaskRepository(tmp_path.joinpath("state.db"))
     tasks = BrowserTaskService(repository)
     execution = BrowserExecutionService(repository, lease_seconds=60)
