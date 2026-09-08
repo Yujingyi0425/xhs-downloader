@@ -96,6 +96,25 @@ def test_page_diagnostics_drop_unknown_and_oversized_values() -> None:
     assert diagnostics == {"matched_anchors": []}
 
 
+def test_media_failure_diagnostics_preserve_only_known_stage_and_code() -> None:
+    """确保媒体失败阶段和错误码可保留但不扩大诊断白名单。"""
+    diagnostics = sanitize_browser_page_diagnostics(
+        {
+            "failure_stage": "page_parser",
+            "failure_code": "MEDIA_PARSER_EMPTY",
+            "unknown_stage": "MESSAGE_RECEIVE",
+            "unknown_code": "synthetic-secret-code",
+            "signed_media_url": "https://example.invalid/signed.mp4",
+            "xsec_token": "synthetic-token",
+        }
+    )
+
+    assert diagnostics == {
+        "failure_stage": "page_parser",
+        "failure_code": "MEDIA_PARSER_EMPTY",
+    }
+
+
 @pytest.mark.parametrize(
     ("status", "expected"),
     [

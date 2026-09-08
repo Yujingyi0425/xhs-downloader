@@ -37,6 +37,21 @@ _KNOWN_ANCHORS = frozenset(
         "profile_container",
     }
 )
+_KNOWN_FAILURE_STAGES = frozenset({"background", "page_parser"})
+_KNOWN_FAILURE_CODES = frozenset(
+    {
+        "DETAIL_NAVIGATION_FAILED",
+        "TARGET_TAB_NOT_FOUND",
+        "TARGET_TAB_IDENTITY_MISMATCH",
+        "CONTENT_SCRIPT_NOT_READY",
+        "MESSAGE_DISPATCH_FAILED",
+        "MESSAGE_RESPONSE_EMPTY",
+        "MEDIA_PARSER_EMPTY",
+        "MEDIA_PARSER_ERROR",
+        "MEDIA_IDENTITY_MISMATCH",
+        "PAGE_TASK_ERROR",
+    }
+)
 _SAFE_TERMINAL_MESSAGES = {
     BrowserTaskStatus.FAILED: "浏览器任务执行失败，可安全重试",
     BrowserTaskStatus.NEEDS_REVIEW: "浏览器操作结果无法确认，请人工核对平台状态",
@@ -48,9 +63,10 @@ def sanitize_browser_page_diagnostics(
 ) -> dict[str, JsonValue] | None:
     """把不可信失败结果裁剪为有界页面兼容性诊断。
 
-    只保留与当前内置页面适配器匹配的版本、选择器配置、页面类型及
-    已知锚点。URL、令牌、页面原文、用户文本和其他扩展字段不会进入
-    返回值。数组读取与输出数量均受限，避免恶意超长结果扩张存储。
+    只保留与当前内置页面适配器匹配的版本、选择器配置、页面类型、
+    已知锚点及媒体任务的有界失败阶段/错误码。URL、令牌、页面原文、
+    用户文本和其他扩展字段不会进入返回值。数组读取与输出数量均受限，
+    避免恶意超长结果扩张存储。
 
     Args:
         value: 扩展或受管浏览器返回的未知失败结果。
@@ -81,6 +97,12 @@ def sanitize_browser_page_diagnostics(
         anchors = _known_anchors(value.get(field))
         if anchors is not None:
             diagnostics[field] = anchors
+    failure_stage = _known_text(value.get("failure_stage"), _KNOWN_FAILURE_STAGES)
+    if failure_stage is not None:
+        diagnostics["failure_stage"] = failure_stage
+    failure_code = _known_text(value.get("failure_code"), _KNOWN_FAILURE_CODES)
+    if failure_code is not None:
+        diagnostics["failure_code"] = failure_code
     return diagnostics or None
 
 

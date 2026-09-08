@@ -99,6 +99,57 @@ async def test_success_result_is_transient_but_persisted_task_is_redacted(
     assert SENTINEL not in (await repository.get(task.task_id)).model_dump_json()
 
 
+@pytest.mark.asyncio
+async def test_media_success_locator_remains_transient_after_diagnostic_change(
+    tmp_path,
+) -> None:
+    """Verify successful media locators remain outside persisted task state.
+
+    Args:
+        tmp_path: Pytest temporary directory.
+    """
+    repository, tasks, execution, _ = await _services(tmp_path)
+    task = await tasks.submit_ephemeral_feed_media(
+        {"feed_id": "synthetic-feed", "xsec_token": SENTINEL}
+    )
+    claim = await execution.claim("synthetic-extension")
+    assert claim is not None
+    result = {
+        "feed_id": "synthetic-feed",
+        "note_type": "video",
+        "media": [
+            {
+                "index": 1,
+                "kind": "video",
+                "url": "https://example.invalid/signed.mp4?xsec_token=secret",
+                "suffix": "mp4",
+            }
+        ],
+    }
+
+    await execution.update(
+        task.task_id,
+        claim.lease_token,
+        BrowserTaskStatus.SUCCEEDED,
+        "done",
+        result,
+    )
+    persisted = await repository.get(task.task_id)
+    delivered = await tasks.wait(task.task_id, 0)
+
+    assert persisted is not None
+    assert persisted.result == {
+        "feed_id": "synthetic-feed",
+        "note_type": "video",
+        "media_count": 1,
+    }
+    assert delivered.result is not None
+    assert delivered.result["feed_id"] == "synthetic-feed"
+    assert delivered.result["media"][0]["url"] == result["media"][0]["url"]
+    assert "signed.mp4" not in persisted.model_dump_json()
+    assert "xsec_token" not in persisted.model_dump_json()
+
+
 @pytest.mark.parametrize(
     "status", [BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW]
 )
