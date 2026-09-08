@@ -12,12 +12,8 @@ import {
   supportsBrowserTasks,
 } from "./browser-task-service";
 import { executeBrowserSessionTask } from "./browser-session-runner";
-import {
-  BrowserTaskExecutionError,
-  classifyMessageDispatchError,
-  isSupportedDetailPageForFeed,
-  type BrowserTaskFailureCode,
-} from "./browser-task-errors";
+import { mediaFailureResponse, waitForMediaDetailPage } from "./browser-media-task-runtime";
+import { BrowserTaskExecutionError, classifyMessageDispatchError } from "./browser-task-errors";
 import { clearExtensionCredential, ensureExtensionCredential } from "./extension-credential";
 import type { ExtensionCredential } from "./publication-types";
 import { loadSettings } from "./storage";
@@ -177,37 +173,6 @@ async function executeInNewTab(
   }
 }
 
-async function waitForMediaDetailPage(
-  tabId: number,
-  request: BrowserPageTaskRequest,
-  assertLeaseActive: () => void,
-): Promise<void> {
-  const feedId = taskPayloadText(request.task.payload, "feed_id");
-  for (let attempt = 0; attempt < PAGE_READY_ATTEMPTS; attempt += 1) {
-    assertLeaseActive();
-    let tab: chrome.tabs.Tab;
-    try {
-      tab = await chrome.tabs.get(tabId);
-    } catch {
-      throw new BrowserTaskExecutionError("TARGET_TAB_NOT_FOUND", "目标标签页不可用");
-    }
-    if (tab.status === "complete") {
-      if (!tab.url) {
-        throw new BrowserTaskExecutionError("DETAIL_NAVIGATION_FAILED", "详情页没有可验证地址");
-      }
-      if (!isSupportedDetailPageForFeed(tab.url, feedId)) {
-        throw new BrowserTaskExecutionError(
-          "TARGET_TAB_IDENTITY_MISMATCH",
-          "详情页与目标帖子不一致",
-        );
-      }
-      return;
-    }
-    await delay(250);
-  }
-  throw new BrowserTaskExecutionError("DETAIL_NAVIGATION_FAILED", "详情页未在有界时间内就绪");
-}
-
 async function sendToTab(
   tabId: number,
   request: BrowserPageTaskRequest,
@@ -241,20 +206,6 @@ async function sendWhenReady(
   }
   const code = classifyMessageDispatchError(lastError);
   throw new BrowserTaskExecutionError(code, "内容脚本未能在有界时间内响应");
-}
-
-function mediaFailureResponse(error: unknown): BrowserPageTaskResponse {
-  const code: BrowserTaskFailureCode =
-    error instanceof BrowserTaskExecutionError ? error.code : "MESSAGE_DISPATCH_FAILED";
-  return {
-    ok: false,
-    status: "failed",
-    message: `GET_FEED_MEDIA 执行失败：${code}`,
-    result: {
-      failure_code: code,
-      failure_stage: "background",
-    },
-  };
 }
 
 function taskTargetUrl(task: BrowserTaskClaim["task"]): string {
