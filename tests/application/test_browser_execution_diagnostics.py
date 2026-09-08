@@ -110,3 +110,44 @@ async def test_success_result_still_requires_task_schema(tmp_path) -> None:
     assert stored is not None
     assert stored.status is BrowserTaskStatus.CLAIMED
     assert stored.result is None
+
+
+async def test_get_feed_media_failure_preserves_safe_stage_and_code(tmp_path) -> None:
+    """确保媒体读取失败仍保留可定位边界的安全诊断。"""
+    repository = SqliteBrowserTaskRepository(tmp_path.joinpath("state.db"))
+    tasks = BrowserTaskService(repository)
+    execution = BrowserExecutionService(repository, lease_seconds=60)
+    task = await tasks.submit_ephemeral_feed_media(
+        {"feed_id": "synthetic-feed", "xsec_token": "synthetic-token"}
+    )
+    claim = await execution.claim("synthetic-extension")
+    assert claim is not None
+
+    completed = await execution.update(
+        task.task_id,
+        claim.lease_token,
+        BrowserTaskStatus.FAILED,
+        "浏览器任务失败 synthetic-token https://example.invalid/media.mp4",
+        {
+            "failure_stage": "background",
+            "failure_code": "CONTENT_SCRIPT_NOT_READY",
+            "signed_media_url": "https://example.invalid/signed.mp4?xsec_token=secret",
+            "xsec_token": "synthetic-token",
+            "Cookie": "session=secret",
+            "Authorization": "Bearer secret",
+        },
+    )
+    stored = await repository.get(task.task_id)
+
+    expected = {
+        "failure_stage": "background",
+        "failure_code": "CONTENT_SCRIPT_NOT_READY",
+    }
+    assert completed.result == expected
+    assert stored is not None
+    assert stored.result == expected
+    serialized = stored.model_dump_json()
+    assert "synthetic-token" not in serialized
+    assert "example.invalid" not in serialized
+    assert "Cookie" not in serialized
+    assert "Authorization" not in serialized
