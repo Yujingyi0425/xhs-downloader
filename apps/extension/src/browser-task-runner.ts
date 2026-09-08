@@ -12,6 +12,12 @@ import {
   supportsBrowserTasks,
 } from "./browser-task-service";
 import { executeBrowserSessionTask } from "./browser-session-runner";
+import {
+  BrowserTaskExecutionError,
+  classifyMessageDispatchError,
+  isSupportedDetailPageForFeed,
+  type BrowserTaskFailureCode,
+} from "./browser-task-errors";
 import { clearExtensionCredential, ensureExtensionCredential } from "./extension-credential";
 import type { ExtensionCredential } from "./publication-types";
 import { loadSettings } from "./storage";
@@ -113,21 +119,27 @@ async function executeInNewTab(
   request: BrowserPageTaskRequest,
   assertLeaseActive: () => void,
 ): Promise<BrowserPageTaskResponse> {
-  assertLeaseActive();
-  const targetUrl = taskTargetUrl(request.task);
-  const tab = await chrome.tabs.create({
-    url: targetUrl,
-    active: request.task.kind === "get_login_qrcode",
-  });
-  assertLeaseActive();
-  if (tab.id === undefined) throw new Error("无法创建小红书任务页面");
-  const revokeInteraction = authorizeBrowserTaskInteraction(
-    tab.id,
-    request.task.task_id,
-    request.task.kind,
-  );
+  let tab: chrome.tabs.Tab | undefined;
+  let revokeInteraction = (): void => undefined;
   let keepOpen = false;
   try {
+    assertLeaseActive();
+    const targetUrl = taskTargetUrl(request.task);
+    tab = await chrome.tabs.create({
+      url: targetUrl,
+      active: request.task.kind === "get_login_qrcode",
+    });
+    assertLeaseActive();
+    if (tab.id === undefined)
+      throw new BrowserTaskExecutionError("TARGET_TAB_NOT_FOUND", "目标标签页未创建");
+    revokeInteraction = authorizeBrowserTaskInteraction(
+      tab.id,
+      request.task.task_id,
+      request.task.kind,
+    );
+    if (request.task.kind === "get_feed_media") {
+      await waitForMediaDetailPage(tab.id, request, assertLeaseActive);
+    }
     let response = await sendWhenReady(tab.id, request, assertLeaseActive);
     for (
       let navigationCount = 0;
@@ -156,10 +168,44 @@ async function executeInNewTab(
       response.ok &&
       response.result?.is_logged_in === false;
     return response;
+  } catch (error) {
+    if (request.task.kind !== "get_feed_media") throw error;
+    return mediaFailureResponse(error);
   } finally {
     revokeInteraction();
-    if (!keepOpen) await chrome.tabs.remove(tab.id);
+    if (!keepOpen && tab?.id !== undefined) await chrome.tabs.remove(tab.id);
   }
+}
+
+async function waitForMediaDetailPage(
+  tabId: number,
+  request: BrowserPageTaskRequest,
+  assertLeaseActive: () => void,
+): Promise<void> {
+  const feedId = taskPayloadText(request.task.payload, "feed_id");
+  for (let attempt = 0; attempt < PAGE_READY_ATTEMPTS; attempt += 1) {
+    assertLeaseActive();
+    let tab: chrome.tabs.Tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch {
+      throw new BrowserTaskExecutionError("TARGET_TAB_NOT_FOUND", "目标标签页不可用");
+    }
+    if (tab.status === "complete") {
+      if (!tab.url) {
+        throw new BrowserTaskExecutionError("DETAIL_NAVIGATION_FAILED", "详情页没有可验证地址");
+      }
+      if (!isSupportedDetailPageForFeed(tab.url, feedId)) {
+        throw new BrowserTaskExecutionError(
+          "TARGET_TAB_IDENTITY_MISMATCH",
+          "详情页与目标帖子不一致",
+        );
+      }
+      return;
+    }
+    await delay(250);
+  }
+  throw new BrowserTaskExecutionError("DETAIL_NAVIGATION_FAILED", "详情页未在有界时间内就绪");
 }
 
 async function sendToTab(
@@ -183,13 +229,32 @@ async function sendWhenReady(
         BrowserPageTaskResponse
       >(tabId, request);
       assertLeaseActive();
+      if (!response || typeof response !== "object" || typeof response.ok !== "boolean") {
+        throw new BrowserTaskExecutionError("MESSAGE_RESPONSE_EMPTY", "内容脚本返回了空响应");
+      }
       return response;
     } catch (error) {
+      if (error instanceof BrowserTaskExecutionError) throw error;
       lastError = error;
       await delay(250);
     }
   }
-  throw lastError instanceof Error ? lastError : new Error("小红书页面未能及时加载");
+  const code = classifyMessageDispatchError(lastError);
+  throw new BrowserTaskExecutionError(code, "内容脚本未能在有界时间内响应");
+}
+
+function mediaFailureResponse(error: unknown): BrowserPageTaskResponse {
+  const code: BrowserTaskFailureCode =
+    error instanceof BrowserTaskExecutionError ? error.code : "MESSAGE_DISPATCH_FAILED";
+  return {
+    ok: false,
+    status: "failed",
+    message: `GET_FEED_MEDIA 执行失败：${code}`,
+    result: {
+      failure_code: code,
+      failure_stage: "background",
+    },
+  };
 }
 
 function taskTargetUrl(task: BrowserTaskClaim["task"]): string {
