@@ -142,6 +142,52 @@ describe("内容脚本浏览器任务执行器", () => {
     ).rejects.toThrow("comment_limit 无效");
   });
 
+  it("在详情页读取视频 locator，并对空媒体 fail closed", async () => {
+    const page = statePage({
+      note: {
+        noteDetailMap: {
+          "synthetic-feed": {
+            note: {
+              noteId: "synthetic-feed",
+              type: "video",
+              user: { userId: "synthetic-author" },
+              video: {
+                media: {
+                  stream: {
+                    h264: [{ masterUrl: "https://example.invalid/synthetic.mp4" }],
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const payload = { feed_id: "synthetic-feed", xsec_token: "synthetic-token" };
+
+    const response = await executeBrowserPageTask(
+      task("get_feed_media", payload),
+      page,
+      "https://www.xiaohongshu.com/explore/synthetic-feed",
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      result: {
+        feed_id: "synthetic-feed",
+        note_type: "video",
+        media: [{ kind: "video", url: "https://example.invalid/synthetic.mp4" }],
+      },
+    });
+    await expect(
+      executeBrowserPageTask(
+        task("get_feed_media", payload),
+        document.implementation.createHTMLDocument(),
+        "https://www.xiaohongshu.com/explore/synthetic-feed",
+      ),
+    ).rejects.toThrow("页面没有请求帖子的视频媒体");
+  });
+
   it("读取指定用户与当前账号主页", async () => {
     const specified = await executeBrowserPageTask(
       task("get_user_profile", { user_id: "synthetic-user" }),

@@ -10,6 +10,7 @@ import {
 let values: Record<string, unknown>;
 let tabs: Array<{ id?: number; active?: boolean }>;
 let pageResponse: unknown;
+let createdUrl: string | undefined;
 
 beforeEach(() => {
   values = {
@@ -22,6 +23,7 @@ beforeEach(() => {
     },
   };
   tabs = [{ id: 7, active: true }];
+  createdUrl = undefined;
   pageResponse = {
     ok: true,
     message: "浏览器尚未登录小红书",
@@ -48,12 +50,16 @@ beforeEach(() => {
     },
     tabs: {
       query: vi.fn(async () => tabs),
-      create: vi.fn(async () => ({ id: 8, active: false })),
+      create: vi.fn(async (options: { url?: string }) => {
+        createdUrl = options.url;
+        return { id: 8, active: false };
+      }),
       update: vi.fn(async () => ({ id: 8, active: false })),
       get: vi.fn(async () => ({
         id: 8,
         status: "complete",
-        url: "https://www.xiaohongshu.com/user/profile/synthetic-user/?source=redirect",
+        url:
+          createdUrl ?? "https://www.xiaohongshu.com/user/profile/synthetic-user/?source=redirect",
       })),
       remove: vi.fn(async () => undefined),
       sendMessage: vi.fn(async () => pageResponse),
@@ -159,6 +165,11 @@ describe("浏览器任务后台执行器", () => {
       { feed_id: "synthetic/feed", xsec_token: "token value" },
       "https://www.xiaohongshu.com/explore/synthetic%2Ffeed?xsec_token=token%20value&xsec_source=pc_feed",
     ],
+    [
+      "get_feed_media" as const,
+      { feed_id: "synthetic/feed", xsec_token: "token value" },
+      "https://www.xiaohongshu.com/explore/synthetic%2Ffeed?xsec_token=token%20value&xsec_source=pc_feed",
+    ],
     ["get_my_profile" as const, {}, "https://www.xiaohongshu.com/explore/"],
     ["set_like" as const, { ...WRITE_PAYLOAD, active: true }, WRITE_URL],
     ["set_favorite" as const, { ...WRITE_PAYLOAD, active: false }, WRITE_URL],
@@ -239,5 +250,86 @@ describe("浏览器任务后台执行器", () => {
       url: "https://www.xiaohongshu.com/user/profile/synthetic-user",
     });
     expect(chrome.tabs.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("媒体任务在详情页 content script 未就绪时返回结构化失败", async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockRejectedValue(
+      new Error("Could not establish connection. Receiving end does not exist."),
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            protocol_version: 4,
+            features: { browser_tasks: true },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            claim("get_feed_media", {
+              feed_id: "synthetic-feed",
+              xsec_token: "synthetic-token",
+            }),
+          ),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: {
+        failure_code: "CONTENT_SCRIPT_NOT_READY",
+        failure_stage: "background",
+      },
+    });
+  }, 10_000);
+
+  it("board 标签页不能直接承担媒体任务", async () => {
+    vi.mocked(chrome.tabs.get).mockResolvedValue({
+      id: 8,
+      status: "complete",
+      url: "https://www.xiaohongshu.com/board/synthetic-board/synthetic-feed",
+    } as never);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            protocol_version: 4,
+            features: { browser_tasks: true },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            claim("get_feed_media", {
+              feed_id: "synthetic-feed",
+              xsec_token: "synthetic-token",
+            }),
+          ),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: {
+        failure_code: "TARGET_TAB_IDENTITY_MISMATCH",
+        failure_stage: "background",
+      },
+    });
   });
 });
