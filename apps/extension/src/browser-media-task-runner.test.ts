@@ -1,0 +1,137 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { runBrowserTaskPoll } from "./browser-task-runner";
+import { makeBrowserTaskClaim as claim } from "./browser-task-test-helpers";
+
+let createdUrl: string | undefined;
+
+beforeEach(() => {
+  createdUrl = undefined;
+  const values: Record<string, unknown> = {
+    settings: { serviceUrl: "http://service", mode: "auto" },
+    extensionCredential: {
+      extensionId: "synthetic-extension",
+      token: "synthetic-token",
+      installationId: "synthetic-installation",
+    },
+  };
+  vi.stubGlobal("chrome", {
+    runtime: { id: "synthetic-extension" },
+    storage: {
+      local: {
+        get: vi.fn(async (keys: string | string[]) =>
+          Object.fromEntries(
+            (Array.isArray(keys) ? keys : [keys]).map((key) => [key, values[key]]),
+          ),
+        ),
+        set: vi.fn(async (next: Record<string, unknown>) => Object.assign(values, next)),
+        remove: vi.fn(async (keys: string | string[]) => {
+          for (const key of Array.isArray(keys) ? keys : [keys]) delete values[key];
+        }),
+      },
+    },
+    tabs: {
+      create: vi.fn(async (options: { url?: string }) => {
+        createdUrl = options.url;
+        return { id: 8, active: false };
+      }),
+      get: vi.fn(async () => ({ id: 8, status: "complete", url: createdUrl })),
+      remove: vi.fn(async () => undefined),
+      sendMessage: vi.fn(async () => ({
+        ok: true,
+        message: "帖子视频媒体读取完成",
+        result: {
+          feed_id: "synthetic-feed",
+          note_type: "video",
+          media: [{ kind: "video", url: "https://example.invalid/synthetic.mp4" }],
+        },
+      })),
+    },
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+function serviceResponses(taskClaim: ReturnType<typeof claim>) {
+  return vi
+    .fn()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ protocol_version: 4, features: { browser_tasks: true } })),
+    )
+    .mockResolvedValueOnce(new Response(JSON.stringify(taskClaim)))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
+    .mockResolvedValueOnce(new Response(JSON.stringify({ status: "succeeded" })));
+}
+
+describe("GET_FEED_MEDIA 后台执行边界", () => {
+  it("从 feed_id 打开详情页，确认 identity 后再发送消息", async () => {
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(createdUrl).toBe(
+      "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token&xsec_source=pc_feed",
+    );
+    expect(chrome.tabs.get).toHaveBeenCalledWith(8);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      8,
+      expect.objectContaining({ type: "browser-page-task" }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "succeeded",
+      result: { note_type: "video" },
+    });
+  });
+
+  it("content script 未就绪时返回明确 failure code", async () => {
+    vi.mocked(chrome.tabs.sendMessage).mockRejectedValue(
+      new Error("Could not establish connection. Receiving end does not exist."),
+    );
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: { failure_code: "CONTENT_SCRIPT_NOT_READY", failure_stage: "background" },
+    });
+  }, 10_000);
+
+  it("board context identity 不匹配时不发送 media 消息", async () => {
+    vi.mocked(chrome.tabs.get).mockResolvedValue({
+      id: 8,
+      status: "complete",
+      url: "https://www.xiaohongshu.com/board/synthetic-board/synthetic-feed",
+    } as never);
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: { failure_code: "TARGET_TAB_IDENTITY_MISMATCH", failure_stage: "background" },
+    });
+  });
+});
