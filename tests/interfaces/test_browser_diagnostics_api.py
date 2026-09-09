@@ -110,6 +110,88 @@ async def test_browser_failure_api_never_returns_sensitive_diagnostics(
     assert len(json.dumps(completed.json()["result"])) < 400
 
 
+async def test_browser_failure_api_preserves_navigation_telemetry_end_to_end(
+    tmp_path,
+) -> None:
+    """确保 R4A 导航遥测经过 API、规范化、SQLite 和 readback 后仍存在。
+
+    Args:
+        tmp_path: Pytest 临时目录。
+    """
+    api = create_api(AppSettings(work_path=tmp_path), lambda _: FakeService())
+    extension_id = "synthetic-r4b-telemetry-extension"
+    origin = f"chrome-extension://{extension_id}"
+    telemetry = {
+        "target_tab_exists": True,
+        "last_tab_status": "loading",
+        "last_route_class": "/explore/<feed_id>",
+        "url_host_is_xhs": True,
+        "expected_route_matched": True,
+        "elapsed_ms": 1234,
+        "tab_removed": False,
+    }
+    async with (
+        api.router.lifespan_context(api),
+        AsyncClient(
+            transport=ASGITransport(app=api),
+            base_url="http://127.0.0.1:5556",
+        ) as client,
+    ):
+        submitted = await client.post(
+            "/browser/tasks",
+            json={"kind": "check_login_status", "payload": {}},
+        )
+        registered = await client.post(
+            "/browser/extension/register",
+            headers={"Origin": origin},
+            json={"extension_id": extension_id},
+        )
+        headers = {
+            "Origin": origin,
+            "Authorization": f"Bearer {registered.json()['token']}",
+            "X-Extension-Id": extension_id,
+        }
+        claimed = await client.post(
+            "/browser/extension/tasks/claim",
+            headers=headers,
+        )
+        result = {
+            "failure_stage": "background",
+            "failure_code": "DETAIL_NAVIGATION_FAILED",
+            **telemetry,
+            "unknown_field": "drop-me",
+            "xsec_token": "synthetic-token",
+            "full_url": "https://www.xiaohongshu.com/explore/synthetic",
+        }
+        completed = await client.post(
+            f"/browser/extension/tasks/{submitted.json()['task_id']}/result",
+            headers={
+                **headers,
+                "X-Browser-Lease": claimed.json()["lease_token"],
+            },
+            json={
+                "status": "failed",
+                "message": "synthetic navigation telemetry",
+                "result": result,
+            },
+        )
+        fetched = await client.get(f"/browser/tasks/{submitted.json()['task_id']}")
+        listed = await client.get("/browser/tasks")
+
+    expected = {
+        "failure_stage": "background",
+        "failure_code": "DETAIL_NAVIGATION_FAILED",
+        **telemetry,
+    }
+    assert completed.status_code == 200
+    assert completed.json()["result"] == expected
+    assert fetched.json()["result"] == expected
+    assert listed.json()[0]["result"] == expected
+    exposed = completed.text + fetched.text + listed.text
+    assert "synthetic-token" not in exposed
+    assert "https://www.xiaohongshu.com/explore/synthetic" not in exposed
+
+
 async def test_browser_api_sanitizes_legacy_terminal_snapshot(tmp_path) -> None:
     """确保升级前旧 SQLite 终态不会通过 list/get API 泄露。
 
