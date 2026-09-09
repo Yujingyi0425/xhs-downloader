@@ -62,6 +62,7 @@ describe("浏览器任务服务客户端", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ token: "issued-token" })))
       .mockResolvedValueOnce(new Response(JSON.stringify(claim)))
       .mockResolvedValueOnce(new Response(JSON.stringify(task)))
+      .mockResolvedValueOnce(new Response(JSON.stringify(done)))
       .mockResolvedValueOnce(new Response(JSON.stringify(done)));
     vi.stubGlobal("fetch", fetchMock);
 
@@ -87,9 +88,37 @@ describe("浏览器任务服务客户端", () => {
         { logged_in: false },
       ),
     ).resolves.toEqual(done);
+    await expect(
+      reportBrowserTaskResult(
+        "http://service",
+        credential,
+        "task",
+        "lease",
+        "failed",
+        "导航失败",
+        {
+          failure_stage: "background",
+          target_tab_exists: true,
+          last_tab_status: "loading",
+        },
+      ),
+    ).resolves.toEqual(done);
     expect(fetchMock.mock.calls[2][1].headers).toMatchObject({
       Authorization: "Bearer synthetic-token",
       "X-Browser-Lease": "lease",
+    });
+    const failedBody = JSON.parse(fetchMock.mock.calls[4][1].body as string) as {
+      result: Record<string, unknown>;
+    };
+    expect(failedBody.result).toMatchObject({
+      r4d_submission_probe: true,
+      r4d_has_target_tab_exists: true,
+      r4d_has_last_tab_status: true,
+      r4d_has_last_route_class: false,
+      r4d_has_url_host_is_xhs: false,
+      r4d_has_expected_route_matched: false,
+      r4d_has_elapsed_ms: false,
+      r4d_has_tab_removed: false,
     });
   });
 

@@ -162,6 +162,14 @@ async def test_browser_failure_api_preserves_navigation_telemetry_end_to_end(
             "unknown_field": "drop-me",
             "xsec_token": "synthetic-token",
             "full_url": "https://www.xiaohongshu.com/explore/synthetic",
+            "r4d_submission_probe": True,
+            "r4d_has_target_tab_exists": True,
+            "r4d_has_last_tab_status": True,
+            "r4d_has_last_route_class": True,
+            "r4d_has_url_host_is_xhs": True,
+            "r4d_has_expected_route_matched": True,
+            "r4d_has_elapsed_ms": True,
+            "r4d_has_tab_removed": True,
         }
         completed = await client.post(
             f"/browser/extension/tasks/{submitted.json()['task_id']}/result",
@@ -187,6 +195,7 @@ async def test_browser_failure_api_preserves_navigation_telemetry_end_to_end(
     assert completed.json()["result"] == expected
     assert fetched.json()["result"] == expected
     assert listed.json()[0]["result"] == expected
+    assert all(not key.startswith("r4d_") for key in completed.json()["result"])
     exposed = completed.text + fetched.text + listed.text
     assert "synthetic-token" not in exposed
     assert "https://www.xiaohongshu.com/explore/synthetic" not in exposed
