@@ -130,6 +130,85 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
     expect(response.result).not.toHaveProperty("created_tab_id");
   }, 10_000);
 
+  it("预期详情 pendingUrl 在旧超时后提交时获得有限 grace", async () => {
+    const expectedUrl =
+      "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token";
+    let reads = 0;
+    vi.mocked(chrome.tabs.get).mockImplementation(async () => {
+      reads += 1;
+      if (reads <= 24) {
+        return {
+          id: 8,
+          status: "loading",
+          url: "about:blank",
+          pendingUrl: expectedUrl,
+        } as never;
+      }
+      return { id: 8, status: "complete", url: expectedUrl } as never;
+    });
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(reads).toBe(25);
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "succeeded",
+      result: { note_type: "video" },
+    });
+  }, 12_000);
+
+  it("pendingUrl 缺失时不获得 grace", async () => {
+    vi.mocked(chrome.tabs.get).mockResolvedValue({
+      id: 8,
+      status: "loading",
+      url: "about:blank",
+    } as never);
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: { failure_code: "DETAIL_NAVIGATION_FAILED" },
+    });
+  }, 10_000);
+
+  it("预期 pendingUrl 永不提交时在新上限失败", async () => {
+    vi.mocked(chrome.tabs.get).mockResolvedValue({
+      id: 8,
+      status: "loading",
+      url: "about:blank",
+      pendingUrl:
+        "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token",
+    } as never);
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: { failure_code: "DETAIL_NAVIGATION_FAILED" },
+    });
+  }, 12_000);
+
   it("目标标签消失时保留 missing 诊断", async () => {
     vi.mocked(chrome.tabs.get).mockRejectedValue(new Error("tab removed"));
     const fetchMock = serviceResponses(
