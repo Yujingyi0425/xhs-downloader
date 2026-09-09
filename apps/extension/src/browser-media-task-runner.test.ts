@@ -111,7 +111,8 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
 
     await runBrowserTaskPoll();
 
-    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+    const response = JSON.parse(fetchMock.mock.calls[3][1].body);
+    expect(response).toMatchObject({
       status: "failed",
       result: {
         failure_stage: "background",
@@ -124,9 +125,9 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
         tab_removed: false,
       },
     });
-    expect(JSON.parse(fetchMock.mock.calls[3][1].body).result.elapsed_ms).toBeGreaterThanOrEqual(
-      0,
-    );
+    expect(response.result.elapsed_ms).toBeGreaterThanOrEqual(0);
+    expect(response.result).not.toHaveProperty("navigation_creation");
+    expect(response.result).not.toHaveProperty("created_tab_id");
   }, 10_000);
 
   it("目标标签消失时保留 missing 诊断", async () => {
