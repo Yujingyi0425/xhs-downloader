@@ -7,8 +7,10 @@ import {
   type BrowserTaskFailureCode,
 } from "./browser-task-errors";
 
-const DETAIL_READY_ATTEMPTS = 20;
+const DETAIL_READY_BASE_TIMEOUT_MS = 5_000;
+const DETAIL_READY_MAX_TIMEOUT_MS = 10_000;
 const DETAIL_READY_INTERVAL_MS = 250;
+const DETAIL_READY_MAX_ATTEMPTS = DETAIL_READY_MAX_TIMEOUT_MS / DETAIL_READY_INTERVAL_MS;
 const MAX_NAVIGATION_DIAGNOSTIC_ELAPSED_MS = 60_000;
 
 type NavigationTelemetry = {
@@ -53,7 +55,7 @@ export async function waitForMediaDetailPage(
   const feedId = taskPayloadText(request.task, "feed_id");
   const startedAt = Date.now();
   let lastTelemetry = lastKnownTelemetry(startedAt);
-  for (let attempt = 0; attempt < DETAIL_READY_ATTEMPTS; attempt += 1) {
+  for (let attempt = 0; attempt < DETAIL_READY_MAX_ATTEMPTS; attempt += 1) {
     assertLeaseActive();
     let tab: chrome.tabs.Tab;
     try {
@@ -87,12 +89,29 @@ export async function waitForMediaDetailPage(
       }
       return;
     }
+    if (Date.now() - startedAt >= DETAIL_READY_BASE_TIMEOUT_MS) {
+      if (!hasExpectedPendingDetail(tab, feedId)) {
+        throw withNavigationTelemetry(
+          new BrowserTaskExecutionError("DETAIL_NAVIGATION_FAILED", "详情页未在有界时间内就绪"),
+          telemetry,
+          creationObservation,
+        );
+      }
+    }
     await delay(DETAIL_READY_INTERVAL_MS);
   }
   throw withNavigationTelemetry(
     new BrowserTaskExecutionError("DETAIL_NAVIGATION_FAILED", "详情页未在有界时间内就绪"),
     lastTelemetry,
     creationObservation,
+  );
+}
+
+function hasExpectedPendingDetail(tab: chrome.tabs.Tab, feedId: string): boolean {
+  return (
+    tab.status === "loading" &&
+    typeof tab.pendingUrl === "string" &&
+    isSupportedDetailPageForFeed(tab.pendingUrl, feedId)
   );
 }
 
