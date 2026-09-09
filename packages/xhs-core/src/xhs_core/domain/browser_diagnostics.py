@@ -38,6 +38,19 @@ _KNOWN_ANCHORS = frozenset(
     }
 )
 _KNOWN_FAILURE_STAGES = frozenset({"background", "page_parser"})
+_KNOWN_TAB_STATUSES = frozenset({"loading", "complete", "unknown", "missing"})
+_KNOWN_ROUTE_CLASSES = frozenset(
+    {
+        "/blank",
+        "/explore/<feed_id>",
+        "/discovery/item/<feed_id>",
+        "/board/<board_id>",
+        "/other-xhs",
+        "/non-xhs",
+        "/unknown",
+    }
+)
+_MAX_ELAPSED_MS = 60_000
 _KNOWN_FAILURE_CODES = frozenset(
     {
         "DETAIL_NAVIGATION_FAILED",
@@ -103,6 +116,24 @@ def sanitize_browser_page_diagnostics(
     failure_code = _known_text(value.get("failure_code"), _KNOWN_FAILURE_CODES)
     if failure_code is not None:
         diagnostics["failure_code"] = failure_code
+    for field in (
+        "target_tab_exists",
+        "url_host_is_xhs",
+        "expected_route_matched",
+        "tab_removed",
+    ):
+        boolean = _known_boolean(value.get(field))
+        if boolean is not None:
+            diagnostics[field] = boolean
+    last_tab_status = _known_text(value.get("last_tab_status"), _KNOWN_TAB_STATUSES)
+    if last_tab_status is not None:
+        diagnostics["last_tab_status"] = last_tab_status
+    last_route_class = _known_text(value.get("last_route_class"), _KNOWN_ROUTE_CLASSES)
+    if last_route_class is not None:
+        diagnostics["last_route_class"] = last_route_class
+    elapsed_ms = value.get("elapsed_ms")
+    if type(elapsed_ms) is int and 0 <= elapsed_ms <= _MAX_ELAPSED_MS:
+        diagnostics["elapsed_ms"] = elapsed_ms
     return diagnostics or None
 
 
@@ -170,3 +201,9 @@ def _known_anchors(value: Any) -> list[str] | None:
             if len(anchors) == _MAX_ANCHOR_COUNT:
                 break
     return anchors
+
+
+def _known_boolean(value: Any) -> bool | None:
+    if type(value) is bool:
+        return value
+    return None

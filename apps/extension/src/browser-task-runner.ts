@@ -134,7 +134,11 @@ async function executeInNewTab(
       request.task.kind,
     );
     if (request.task.kind === "get_feed_media") {
-      await waitForMediaDetailPage(tab.id, request, assertLeaseActive);
+      await waitForMediaDetailPage(tab.id, request, assertLeaseActive, {
+        created_tab_id: tab.id,
+        create_returned: true,
+        chrome_runtime_last_error_present: false,
+      });
     }
     let response = await sendWhenReady(tab.id, request, assertLeaseActive);
     for (
