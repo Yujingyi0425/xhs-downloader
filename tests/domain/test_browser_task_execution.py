@@ -115,6 +115,62 @@ def test_media_failure_diagnostics_preserve_only_known_stage_and_code() -> None:
     }
 
 
+def test_navigation_diagnostics_preserve_bounded_fields_and_drop_secrets() -> None:
+    """确保导航遥测只保留批准的有界事实。"""
+    diagnostics = sanitize_browser_page_diagnostics(
+        {
+            "failure_stage": "background",
+            "failure_code": "DETAIL_NAVIGATION_FAILED",
+            "target_tab_exists": True,
+            "last_tab_status": "loading",
+            "last_route_class": "/explore/<feed_id>",
+            "url_host_is_xhs": True,
+            "expected_route_matched": True,
+            "elapsed_ms": 5000,
+            "tab_removed": False,
+            "full_url": "https://www.xiaohongshu.com/explore/feed?xsec_token=secret",
+            "xsec_token": "secret-token",
+            "Cookie": "secret-cookie",
+            "Authorization": "Bearer secret",
+            "signed_url": "https://example.invalid/signed.mp4",
+            "raw_error": "secret-token",
+            "totally_new_secretish_field": "secret",
+        }
+    )
+
+    assert diagnostics == {
+        "failure_stage": "background",
+        "failure_code": "DETAIL_NAVIGATION_FAILED",
+        "target_tab_exists": True,
+        "last_tab_status": "loading",
+        "last_route_class": "/explore/<feed_id>",
+        "url_host_is_xhs": True,
+        "expected_route_matched": True,
+        "elapsed_ms": 5000,
+        "tab_removed": False,
+    }
+
+
+def test_navigation_diagnostics_reject_invalid_bounded_values() -> None:
+    """确保导航遥测不会接受未知枚举或越界整数。"""
+    diagnostics = sanitize_browser_page_diagnostics(
+        {
+            "target_tab_exists": "true",
+            "last_tab_status": "interactive",
+            "last_route_class": "/explore/real-feed-id",
+            "url_host_is_xhs": 1,
+            "expected_route_matched": False,
+            "elapsed_ms": 60_001,
+            "tab_removed": False,
+        }
+    )
+
+    assert diagnostics == {
+        "expected_route_matched": False,
+        "tab_removed": False,
+    }
+
+
 @pytest.mark.parametrize(
     ("status", "expected"),
     [

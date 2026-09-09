@@ -90,6 +90,70 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       status: "succeeded",
       result: { note_type: "video" },
     });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body).result).not.toHaveProperty(
+      "elapsed_ms",
+    );
+  });
+
+  it("详情页持续 loading 时保留有界导航诊断", async () => {
+    vi.mocked(chrome.tabs.get).mockResolvedValue({
+      id: 8,
+      status: "loading",
+      url: "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token",
+    } as never);
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: {
+        failure_stage: "background",
+        failure_code: "DETAIL_NAVIGATION_FAILED",
+        target_tab_exists: true,
+        last_tab_status: "loading",
+        last_route_class: "/explore/<feed_id>",
+        url_host_is_xhs: true,
+        expected_route_matched: true,
+        tab_removed: false,
+      },
+    });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body).result.elapsed_ms).toBeGreaterThanOrEqual(
+      0,
+    );
+  }, 10_000);
+
+  it("目标标签消失时保留 missing 诊断", async () => {
+    vi.mocked(chrome.tabs.get).mockRejectedValue(new Error("tab removed"));
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      result: {
+        failure_stage: "background",
+        failure_code: "TARGET_TAB_NOT_FOUND",
+        target_tab_exists: false,
+        last_tab_status: "missing",
+        last_route_class: "/unknown",
+        url_host_is_xhs: false,
+        expected_route_matched: false,
+        tab_removed: true,
+      },
+    });
   });
 
   it("content script 未就绪时返回明确 failure code", async () => {
@@ -131,7 +195,16 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
     expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
       status: "failed",
-      result: { failure_code: "TARGET_TAB_IDENTITY_MISMATCH", failure_stage: "background" },
+      result: {
+        failure_code: "TARGET_TAB_IDENTITY_MISMATCH",
+        failure_stage: "background",
+        target_tab_exists: true,
+        last_tab_status: "complete",
+        last_route_class: "/board/<board_id>",
+        url_host_is_xhs: true,
+        expected_route_matched: false,
+        tab_removed: false,
+      },
     });
   });
 });
