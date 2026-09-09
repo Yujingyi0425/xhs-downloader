@@ -179,7 +179,7 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
 
     await runBrowserTaskPoll();
 
-    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body as string)).toMatchObject({
       status: "failed",
       result: { failure_code: "DETAIL_NAVIGATION_FAILED" },
     });
@@ -203,7 +203,10 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
 
     await runBrowserTaskPoll();
 
-    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+    const finalResponse = JSON.parse(
+      fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1].body as string,
+    );
+    expect(finalResponse).toMatchObject({
       status: "failed",
       result: { failure_code: "DETAIL_NAVIGATION_FAILED" },
     });
