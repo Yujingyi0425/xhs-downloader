@@ -7,6 +7,7 @@ import type {
 
 import type { ExtensionCredential } from "./publication-types";
 import { supportsCapability, type ServiceCapabilities } from "./capability-negotiation";
+import { buildR4dSubmissionProbe } from "./r4d-submission-probe";
 
 /** 扩展首个任务领取请求的默认长轮询秒数。 */
 export const BROWSER_TASK_CLAIM_WAIT_SECONDS = 25;
@@ -116,7 +117,11 @@ export async function reportBrowserTaskResult(
     `${normalizeBase(baseUrl)}/browser/extension/tasks/${taskId}/result`,
     {
       method: "POST",
-      body: JSON.stringify({ status, message, result: result ?? null }),
+      body: JSON.stringify({
+        status,
+        message,
+        result: status === "succeeded" ? (result ?? null) : buildR4dSubmissionProbe(result),
+      }),
       headers: leasedHeaders(credential, leaseToken),
       signal,
     },

@@ -19,6 +19,7 @@ from xhs_core.domain import (
     split_extension_identity,
 )
 
+from .browser_ingress_diagnostics import observe_r4d_submission
 from .browser_models import (
     BrowserAccountChallengeAnswerRequest,
     BrowserAccountChallengeClaimResponse,
@@ -217,6 +218,7 @@ def create_browser_router(
         request: Request,
     ) -> BrowserTask:
         await _require_extension(request, credentials)
+        observe_r4d_submission(task_id, payload.result)
         return await execution.update(
             task_id,
             _lease_token(request),
