@@ -13,6 +13,13 @@ export type BrowserTaskFailureCode =
   | "MEDIA_IDENTITY_MISMATCH"
   | "PAGE_TASK_ERROR";
 
+export type BrowserTaskFailureClass =
+  | "DETAIL_NAVIGATION"
+  | "CONTENT_SCRIPT"
+  | "PAGE_TASK"
+  | "PARSER"
+  | "UNKNOWN";
+
 /** 带有安全失败类型的扩展运行时错误，不携带页面 URL 或凭据。 */
 export class BrowserTaskExecutionError extends Error {
   constructor(
@@ -22,6 +29,35 @@ export class BrowserTaskExecutionError extends Error {
     super(message);
     this.name = "BrowserTaskExecutionError";
   }
+}
+
+/** 将失败码归并为不含页面原文的有界失败类别。 */
+export function classifyBrowserTaskFailure(
+  code: BrowserTaskFailureCode,
+): BrowserTaskFailureClass {
+  if (
+    code === "DETAIL_NAVIGATION_FAILED" ||
+    code === "TARGET_TAB_NOT_FOUND" ||
+    code === "TARGET_TAB_IDENTITY_MISMATCH"
+  ) {
+    return "DETAIL_NAVIGATION";
+  }
+  if (
+    code === "CONTENT_SCRIPT_NOT_READY" ||
+    code === "MESSAGE_DISPATCH_FAILED" ||
+    code === "MESSAGE_RESPONSE_EMPTY"
+  ) {
+    return "CONTENT_SCRIPT";
+  }
+  if (
+    code === "MEDIA_PARSER_EMPTY" ||
+    code === "MEDIA_PARSER_ERROR" ||
+    code === "MEDIA_IDENTITY_MISMATCH"
+  ) {
+    return "PARSER";
+  }
+  if (code === "PAGE_TASK_ERROR") return "PAGE_TASK";
+  return "UNKNOWN";
 }
 
 /** 将浏览器消息通道异常归类为可重试且不泄露底层细节的错误。 */

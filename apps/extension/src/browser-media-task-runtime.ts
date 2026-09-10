@@ -3,6 +3,7 @@ import type { BrowserTask } from "@xhs-downloader/contracts";
 import type { BrowserPageTaskRequest, BrowserPageTaskResponse } from "./browser-page-runner";
 import {
   BrowserTaskExecutionError,
+  classifyBrowserTaskFailure,
   isSupportedDetailPageForFeed,
   type BrowserTaskFailureCode,
 } from "./browser-task-errors";
@@ -126,6 +127,7 @@ export function mediaFailureResponse(error: unknown): BrowserPageTaskResponse {
     message: `GET_FEED_MEDIA 执行失败：${code}`,
     result: {
       failure_code: code,
+      failure_class: classifyBrowserTaskFailure(code),
       failure_stage: "background",
       ...(telemetry ?? {}),
     },

@@ -5,6 +5,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import JsonValue
 
+from .browser_failure_diagnostics import (
+    KNOWN_FAILURE_CLASSES,
+    failure_class_for_code,
+    missing_browser_failure_diagnostics,
+)
 from .browser_parser_telemetry import sanitize_parser_telemetry
 from .browser_runtime_telemetry import sanitize_browser_runtime_telemetry
 from .browser_tasks import BrowserTask, BrowserTaskStatus
@@ -40,7 +45,7 @@ _KNOWN_ANCHORS = frozenset(
         "profile_container",
     }
 )
-_KNOWN_FAILURE_STAGES = frozenset({"background", "page_parser"})
+_KNOWN_FAILURE_STAGES = frozenset({"background", "page_parser", "unknown"})
 _KNOWN_TAB_STATUSES = frozenset({"loading", "complete", "unknown", "missing"})
 _KNOWN_ROUTE_CLASSES = frozenset(
     {
@@ -66,6 +71,7 @@ _KNOWN_FAILURE_CODES = frozenset(
         "MEDIA_PARSER_ERROR",
         "MEDIA_IDENTITY_MISMATCH",
         "PAGE_TASK_ERROR",
+        "RUNTIME_ENVELOPE_MISSING",
     }
 )
 _SAFE_TERMINAL_MESSAGES = {
@@ -122,6 +128,11 @@ def sanitize_browser_page_diagnostics(
     failure_code = _known_text(value.get("failure_code"), _KNOWN_FAILURE_CODES)
     if failure_code is not None:
         diagnostics["failure_code"] = failure_code
+    failure_class = _known_text(value.get("failure_class"), KNOWN_FAILURE_CLASSES)
+    if failure_class is None and failure_code is not None:
+        failure_class = failure_class_for_code(failure_code)
+    if failure_class is not None:
+        diagnostics["failure_class"] = failure_class
     parser_telemetry = sanitize_parser_telemetry(value.get("parser_telemetry"))
     if parser_telemetry is not None:
         diagnostics["parser_telemetry"] = parser_telemetry
@@ -130,6 +141,9 @@ def sanitize_browser_page_diagnostics(
     )
     if runtime_telemetry is not None:
         diagnostics["browser_runtime_telemetry"] = runtime_telemetry
+    elif any(item is not None for item in (failure_stage, failure_code, failure_class)):
+        diagnostics["diagnostic_schema_version"] = "SERVER-1"
+        diagnostics["last_completed_runtime_boundary"] = "UNKNOWN"
     for field in (
         "target_tab_exists",
         "url_host_is_xhs",
@@ -185,6 +199,8 @@ def sanitize_stored_browser_task(task: BrowserTask) -> BrowserTask:
         if task.status in _SAFE_TERMINAL_MESSAGES
         else _sanitize_browser_json(task.result)
     )
+    if task.status in _SAFE_TERMINAL_MESSAGES and safe_result is None:
+        safe_result = missing_browser_failure_diagnostics()
     safe_message = (
         sanitize_browser_task_message(task.status, task.message)
         if task.status in _SAFE_TERMINAL_MESSAGES
@@ -281,6 +297,4 @@ def _known_anchors(value: Any) -> list[str] | None:
 
 
 def _known_boolean(value: Any) -> bool | None:
-    if type(value) is bool:
-        return value
-    return None
+    return value if type(value) is bool else None

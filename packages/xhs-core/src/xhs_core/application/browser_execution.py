@@ -17,15 +17,13 @@ from xhs_core.domain import (
     BrowserTaskLeaseConflictError,
     BrowserTaskStatus,
     browser_task_may_write_platform,
-    mark_browser_runtime_telemetry_submitted,
-    sanitize_browser_page_diagnostics,
     sanitize_browser_task_message,
     sanitize_browser_task_result,
 )
 from xhs_core.domain.browser_ports import BrowserTaskRepository
-from xhs_core.domain.browser_requests import validate_browser_task_result
 
 from .browser_execution_logging import log_discarded_reason
+from .browser_execution_results import normalize_browser_task_result
 from .browser_task_ephemeral import (
     BrowserTaskEphemeralInputChannel,
     ephemeral_channel_for_repository,
@@ -135,7 +133,7 @@ class BrowserExecutionService:
             raise BrowserTaskError(f"不能从 {task.status.value} 转换到 {status.value}")
         if status is BrowserTaskStatus.SUCCEEDED and result is None:
             raise BrowserTaskError("成功任务必须返回结构化结果")
-        normalized_result = _normalize_terminal_result(task, status, result)
+        normalized_result = normalize_browser_task_result(task, status, result)
         transient_result = None
         persisted_result = normalized_result
         if status is BrowserTaskStatus.SUCCEEDED and normalized_result is not None:
@@ -272,6 +270,8 @@ class BrowserExecutionService:
         if not task or not valid_hash or not lease_active:
             raise BrowserTaskLeaseConflictError("浏览器任务租约无效或已经过期")
         return task
+
+
 def _allowed_transitions(
     status: BrowserTaskStatus,
 ) -> set[BrowserTaskStatus]:
@@ -284,17 +284,3 @@ def _allowed_transitions(
 
 def _token_hash(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
-
-
-def _normalize_terminal_result(
-    task: BrowserTask,
-    status: BrowserTaskStatus,
-    result: dict[str, JsonValue] | None,
-) -> dict[str, JsonValue] | None:
-    if status is BrowserTaskStatus.SUCCEEDED and result is not None:
-        return validate_browser_task_result(task.kind, result)
-    if status in {BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW}:
-        return mark_browser_runtime_telemetry_submitted(
-            sanitize_browser_page_diagnostics(result)
-        )
-    return None

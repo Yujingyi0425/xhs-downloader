@@ -10,7 +10,10 @@ import {
 } from "./account-proof";
 import { UncertainBrowserActionError } from "./browser-action-errors";
 import { buildPageCompatibilityDiagnostics } from "./browser-page-diagnostics";
-import { classifyPageTaskError } from "./browser-task-errors";
+import {
+  classifyBrowserTaskFailure,
+  classifyPageTaskError,
+} from "./browser-task-errors";
 import { requestBrowserInteraction } from "./browser-interaction-input";
 import { CollectionCaptureController } from "./collection-controller";
 import { createCollectionPanel } from "./collection-panel";
@@ -80,6 +83,7 @@ chrome.runtime.onMessage.addListener(
           result: {
             ...buildPageCompatibilityDiagnostics(document, location.href),
             failure_code: failureCode,
+            failure_class: classifyBrowserTaskFailure(failureCode),
             failure_stage: "page_parser",
             ...(parserTelemetry ? { parser_telemetry: parserTelemetry } : {}),
           },

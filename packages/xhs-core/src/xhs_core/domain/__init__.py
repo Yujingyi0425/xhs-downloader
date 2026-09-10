@@ -21,6 +21,7 @@ from .browser_runtime_telemetry import (
     mark_browser_runtime_telemetry_submitted,
     sanitize_browser_runtime_telemetry,
 )
+from .browser_failure_diagnostics import missing_browser_failure_diagnostics
 from .browser_sessions import BrowserCookieDeletionResult, LoginQrCodeResult
 from .browser_tasks import (
     EPHEMERAL_XSEC_READ_KINDS,

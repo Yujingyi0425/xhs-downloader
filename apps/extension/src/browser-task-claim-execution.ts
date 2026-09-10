@@ -11,7 +11,10 @@ import {
   reportBrowserTaskResult,
   reportBrowserTaskRunning,
 } from "./browser-task-service";
-import { BrowserTaskExecutionError } from "./browser-task-errors";
+import {
+  BrowserTaskExecutionError,
+  classifyBrowserTaskFailure,
+} from "./browser-task-errors";
 import type { ExtensionCredential } from "./publication-types";
 
 type CredentialOperation = <T>(
@@ -138,6 +141,9 @@ function failureResult(
         error instanceof BrowserTaskExecutionError
           ? error.code
           : "PAGE_TASK_ERROR",
+      failure_class: classifyBrowserTaskFailure(
+        error instanceof BrowserTaskExecutionError ? error.code : "PAGE_TASK_ERROR",
+      ),
     },
     telemetry.snapshot(),
   );
