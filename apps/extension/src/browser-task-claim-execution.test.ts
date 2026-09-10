@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { executeBrowserTaskClaim } from "./browser-task-claim-execution";
+import { BrowserTaskExecutionError } from "./browser-task-errors";
 import { makeBrowserTaskClaim, WRITE_PAYLOAD } from "./browser-task-test-helpers";
 import type { ExtensionCredential } from "./publication-types";
 
@@ -157,5 +158,63 @@ describe("浏览器任务租约执行", () => {
 
     const result = reported.find((call) => call.url.endsWith("/result"));
     expect(result?.body.message).toBe("浏览器任务执行失败");
+  });
+
+  it("后台边界异常也回传 bounded runtime envelope", async () => {
+    stubFetch();
+    const claim = makeBrowserTaskClaim("get_feed_detail");
+
+    await executeBrowserTaskClaim(
+      "http://service",
+      claim,
+      async (_assertLeaseActive, telemetry) => {
+        telemetry.markTargetTabCreated();
+        throw new BrowserTaskExecutionError(
+          "DETAIL_NAVIGATION_FAILED",
+          "页面原始异常不应进入持久化结果",
+        );
+      },
+      withCredential,
+    );
+
+    const result = reported.find((call) => call.url.endsWith("/result"));
+    const body = result?.body ?? {};
+    const runtime = body.result && typeof body.result === "object"
+      ? (body.result as Record<string, unknown>).browser_runtime_telemetry
+      : undefined;
+    expect(runtime).toMatchObject({
+      extension_manifest_version: "3.0.0",
+      diagnostic_schema_version: "C7C-1",
+      target_tab_created: true,
+      detail_wait_result: "NOT_REACHED",
+      last_completed_runtime_boundary: "RESULT_SUBMIT_ATTEMPTED",
+      parser_invocation_started: false,
+    });
+    expect(JSON.stringify(body.result)).not.toContain("页面原始异常");
+  });
+
+  it("结果提交拒绝时不伪造已提交状态", async () => {
+    stubFetch(() => new Response(JSON.stringify({ detail: "拒绝" }), { status: 503 }));
+    const claim = makeBrowserTaskClaim("get_feed_detail");
+
+    await expect(
+      executeBrowserTaskClaim(
+        "http://service",
+        claim,
+        async (_assertLeaseActive, telemetry) => {
+          telemetry.markTargetTabCreated();
+          return { ok: false, status: "failed", message: "页面失败" };
+        },
+        withCredential,
+      ),
+    ).rejects.toThrow();
+    const result = reported.find((call) => call.url.endsWith("/result"));
+    expect(result?.body.status).toBe("failed");
+    expect(result?.body.result).toMatchObject({
+      browser_runtime_telemetry: {
+        result_submit_attempted: true,
+        result_submit_resolved: false,
+      },
+    });
   });
 });

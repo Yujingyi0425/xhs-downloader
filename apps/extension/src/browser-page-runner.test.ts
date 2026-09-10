@@ -4,6 +4,7 @@ import type { BrowserTask } from "@xhs-downloader/contracts";
 
 import { executeBrowserPageTask, isBrowserPageTaskRequest } from "./browser-page-runner";
 import { installBrowserStateBridge } from "./browser-state-main";
+import { pageRuntimeTelemetryFromError } from "./browser-runtime-telemetry";
 import { feedState, pageTask as task, profileState, statePage } from "./browser-page-test-helpers";
 
 describe("内容脚本浏览器任务执行器", () => {
@@ -133,6 +134,11 @@ describe("内容脚本浏览器任务执行器", () => {
     );
 
     expect(response.result).toMatchObject({ feed_id: "synthetic-feed" });
+    expect(response.page_runtime_telemetry).toEqual({
+      content_script_message_received: false,
+      page_task_started: true,
+      parser_invocation_started: true,
+    });
     await expect(
       executeBrowserPageTask(
         task("get_feed_detail", { ...payload, comment_limit: 1.5 }),
@@ -140,6 +146,27 @@ describe("内容脚本浏览器任务执行器", () => {
         "https://www.xiaohongshu.com/explore/synthetic-feed",
       ),
     ).rejects.toThrow("comment_limit 无效");
+  });
+
+  it("parser 异常保留 page-task invocation marker", async () => {
+    const page = statePage({ note: {} });
+    const error = await executeBrowserPageTask(
+      task("get_feed_detail", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+        comment_limit: 0,
+        include_replies: false,
+        reply_limit: 0,
+      }),
+      page,
+      "https://www.xiaohongshu.com/explore/synthetic-feed",
+    ).catch((value: unknown) => value);
+
+    expect(pageRuntimeTelemetryFromError(error)).toEqual({
+      content_script_message_received: false,
+      page_task_started: true,
+      parser_invocation_started: true,
+    });
   });
 
   it("读取指定用户与当前账号主页", async () => {
