@@ -108,7 +108,7 @@ async def test_timeout_revokes_claim_before_page_execution(tmp_path) -> None:
     Args:
         tmp_path: Pytest 提供的临时目录。
     """
-    repository, _, execution, provider = _runtime(tmp_path)
+    repository, _, execution, provider = _runtime(tmp_path, timeout_seconds=0.5)
     operation = asyncio.create_task(provider.list_feeds("synthetic-claimed-timeout"))
     await _wait_for_task(repository)
     claim = await execution.claim("synthetic-extension")

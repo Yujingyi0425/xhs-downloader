@@ -26,6 +26,7 @@ def test_extension_uses_minimum_permissions() -> None:
     assert host_permissions == {
         "http://127.0.0.1/*",
         "http://localhost/*",
+        "https://www.xiaohongshu.com/*",
     }
     assert all("<all_urls>" not in value for value in host_permissions)
 
