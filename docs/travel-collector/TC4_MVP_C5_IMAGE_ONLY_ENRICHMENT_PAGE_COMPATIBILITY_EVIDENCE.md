@@ -94,4 +94,3 @@ VIDEO_NAVIGATION_BEHAVIOR_CHANGED=NO
 本轮只在 `get_feed_detail` 分支调用新的 readiness/identity gate。现有 `get_feed_media` 分支继续使用原有 media wait path；没有修改 pendingUrl grace、视频导航、R4E 或媒体下载逻辑。
 
 真实 image runtime smoke 尚未执行，因此本证据不把 `COLLECTION_IMAGE_MVP_RUNTIME_READY` 写成 PASS。
-
