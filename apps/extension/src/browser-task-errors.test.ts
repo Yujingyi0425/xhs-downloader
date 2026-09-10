@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 
 import {
   BrowserTaskExecutionError,
+  classifyBrowserTaskFailure,
   classifyMessageDispatchError,
   classifyPageTaskError,
   isSupportedDetailPageForFeed,
 } from "./browser-task-errors";
 
 describe("浏览器任务失败边界", () => {
+  it("按失败码生成有界类别", () => {
+    expect(classifyBrowserTaskFailure("DETAIL_NAVIGATION_FAILED")).toBe("DETAIL_NAVIGATION");
+    expect(classifyBrowserTaskFailure("CONTENT_SCRIPT_NOT_READY")).toBe("CONTENT_SCRIPT");
+    expect(classifyBrowserTaskFailure("MEDIA_PARSER_ERROR")).toBe("PARSER");
+    expect(classifyBrowserTaskFailure("PAGE_TASK_ERROR")).toBe("PAGE_TASK");
+  });
+
   it("区分 parser 空结果、parser 异常和 identity mismatch", () => {
     expect(classifyPageTaskError("get_feed_media", new Error("页面没有请求帖子的视频媒体"))).toBe(
       "MEDIA_PARSER_EMPTY",

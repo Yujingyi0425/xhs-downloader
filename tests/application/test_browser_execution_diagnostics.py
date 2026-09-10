@@ -146,6 +146,9 @@ async def test_get_feed_media_failure_preserves_safe_stage_and_code(tmp_path) ->
     expected = {
         "failure_stage": "background",
         "failure_code": "CONTENT_SCRIPT_NOT_READY",
+        "failure_class": "CONTENT_SCRIPT",
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
     }
     assert completed.result == expected
     assert stored is not None

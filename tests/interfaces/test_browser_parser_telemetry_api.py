@@ -90,6 +90,9 @@ async def test_browser_failure_api_preserves_safe_parser_telemetry_end_to_end(
     expected = {
         "failure_stage": "page_parser",
         "failure_code": "PAGE_TASK_ERROR",
+        "failure_class": "PAGE_TASK",
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
         "parser_telemetry": telemetry,
     }
     assert completed.status_code == 200

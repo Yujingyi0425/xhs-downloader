@@ -191,7 +191,15 @@ async def test_repository_removes_legacy_terminal_extra_fields(tmp_path) -> None
     loaded = await repository.get(task.task_id)
     stored = await _stored_payload(database, task.task_id)
 
-    assert loaded == task
+    assert loaded is not None
+    assert loaded.task_id == task.task_id
+    assert loaded.result == {
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
+        "failure_stage": "unknown",
+        "failure_code": "RUNTIME_ENVELOPE_MISSING",
+        "failure_class": "RUNTIME_ENVELOPE_MISSING",
+    }
     assert sensitive not in stored
     assert "debug" not in json.loads(stored)
 

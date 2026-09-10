@@ -112,6 +112,9 @@ def test_media_failure_diagnostics_preserve_only_known_stage_and_code() -> None:
     assert diagnostics == {
         "failure_stage": "page_parser",
         "failure_code": "MEDIA_PARSER_EMPTY",
+        "failure_class": "PARSER",
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
     }
 
 
@@ -150,6 +153,9 @@ def test_parser_telemetry_preserves_only_safe_bounded_fields() -> None:
     assert diagnostics == {
         "failure_stage": "page_parser",
         "failure_code": "PAGE_TASK_ERROR",
+        "failure_class": "PAGE_TASK",
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
         "parser_telemetry": {
             "initial_state_anchor_present": True,
             "initial_state_parse_result": "PARSED",
@@ -202,6 +208,9 @@ def test_navigation_diagnostics_preserve_bounded_fields_and_drop_secrets() -> No
     assert diagnostics == {
         "failure_stage": "background",
         "failure_code": "DETAIL_NAVIGATION_FAILED",
+        "failure_class": "DETAIL_NAVIGATION",
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
         "target_tab_exists": True,
         "last_tab_status": "loading",
         "last_route_class": "/explore/<feed_id>",
@@ -229,6 +238,19 @@ def test_navigation_diagnostics_reject_invalid_bounded_values() -> None:
     assert diagnostics == {
         "expected_route_matched": False,
         "tab_removed": False,
+    }
+
+
+def test_missing_failure_envelope_is_explicitly_bounded() -> None:
+    """缺少扩展结果时也必须返回未知边界，而不是空结果。"""
+    from xhs_core.domain import missing_browser_failure_diagnostics
+
+    assert missing_browser_failure_diagnostics() == {
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
+        "failure_stage": "unknown",
+        "failure_code": "RUNTIME_ENVELOPE_MISSING",
+        "failure_class": "RUNTIME_ENVELOPE_MISSING",
     }
 
 

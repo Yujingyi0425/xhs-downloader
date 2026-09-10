@@ -189,6 +189,9 @@ async def test_browser_failure_api_preserves_navigation_telemetry_end_to_end(
     expected = {
         "failure_stage": "background",
         "failure_code": "DETAIL_NAVIGATION_FAILED",
+        "failure_class": "DETAIL_NAVIGATION",
+        "diagnostic_schema_version": "SERVER-1",
+        "last_completed_runtime_boundary": "UNKNOWN",
         **telemetry,
     }
     assert completed.status_code == 200
