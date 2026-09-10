@@ -36,6 +36,7 @@ from .collection_media import (
     CollectionMediaTask,
     DeferredCollectionMedia,
 )
+from .collection_media_service import CollectionMediaService
 from .collection_work_mapping import collection_feed_detail_to_work_detail
 from .download import DownloadService
 from .download_tasks import DownloadTaskCoordinator
@@ -75,6 +76,7 @@ __all__ = [
     "CollectionMediaCoordinator",
     "CollectionMediaItemResult",
     "CollectionMediaPlan",
+    "CollectionMediaService",
     "CollectionMediaStatus",
     "CollectionMediaTask",
     "CollectionService",

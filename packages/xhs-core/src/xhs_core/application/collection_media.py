@@ -2,10 +2,7 @@
 
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
-from enum import StrEnum
 from typing import Protocol
-from urllib.parse import urlsplit
 
 from xhs_core.domain import (
     CollectionSnapshotItem,
@@ -18,13 +15,15 @@ from xhs_core.domain.models import (
     WorkType,
 )
 
-
-class CollectionMediaStatus(StrEnum):
-    """收藏媒体单项的 C2 状态。"""
-
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    DEFERRED = "deferred"
+from .collection_media_models import (
+    CollectionMediaBatchResult,
+    CollectionMediaItemResult,
+    CollectionMediaPlan,
+    CollectionMediaStatus,
+    CollectionMediaTask,
+    DeferredCollectionMedia,
+)
+from .collection_media_validation import safe_suffix, validate_media_url
 
 
 class CollectionDetailDownloader(Protocol):
@@ -36,75 +35,17 @@ class CollectionDetailDownloader(Protocol):
         indexes: set[int],
         on_progress: Callable[[DownloadProgress], None] | None = None,
     ) -> list[DownloadArtifact]:
-        """下载已解析详情中的指定媒体。"""
+        """下载已解析详情中的指定媒体。
+
+        Args:
+            detail: 已验证的 canonical 作品详情。
+            indexes: 需要下载的一基媒体序号。
+            on_progress: 可选的下载进度回调。
+
+        Returns:
+            已完成落盘的 artifact 列表。
+        """
         ...
-
-
-@dataclass(frozen=True)
-class CollectionMediaTask:
-    """一个稳定的收藏夹图像媒体逻辑任务。"""
-
-    snapshot_id: str
-    source_order: int
-    work_id: str
-    source_url: str
-    media_index: int
-    kind: MediaKind
-    media_url: str
-    suffix: str
-
-    @property
-    def identity(self) -> tuple[str, str, int, MediaKind]:
-        """返回不依赖随机数和完成顺序的任务身份。"""
-        return (self.snapshot_id, self.work_id, self.media_index, self.kind)
-
-    @property
-    def filename_identity(self) -> str:
-        """返回用于防止同标题冲突的稳定文件身份提示。"""
-        return f"{self.work_id}_{self.media_index}.{self.suffix}"
-
-
-@dataclass(frozen=True)
-class DeferredCollectionMedia:
-    """本阶段不执行的媒体项。"""
-
-    work_id: str
-    media_index: int | None
-    kind: MediaKind | None
-    reason: str
-
-
-@dataclass(frozen=True)
-class CollectionMediaPlan:
-    """一个收藏条目的图像任务计划。"""
-
-    tasks: tuple[CollectionMediaTask, ...]
-    deferred: tuple[DeferredCollectionMedia, ...]
-
-
-@dataclass(frozen=True)
-class CollectionMediaItemResult:
-    """一个媒体任务的安全结果及其 collection 关联。"""
-
-    snapshot_id: str
-    source_order: int
-    work_id: str
-    media_index: int
-    kind: MediaKind
-    status: CollectionMediaStatus
-    artifact: DownloadArtifact | None = None
-    error_code: str | None = None
-
-
-@dataclass(frozen=True)
-class CollectionMediaBatchResult:
-    """一个收藏条目的有序媒体结果。"""
-
-    snapshot_id: str
-    source_order: int
-    work_id: str
-    items: tuple[CollectionMediaItemResult, ...]
-    deferred: tuple[DeferredCollectionMedia, ...]
 
 
 class CollectionMediaCoordinator:
@@ -147,8 +88,8 @@ class CollectionMediaCoordinator:
                 )
                 continue
             media_url = resource.url.strip()
-            _validate_media_url(media_url)
-            suffix = _safe_suffix(resource.suffix)
+            validate_media_url(media_url)
+            suffix = safe_suffix(resource.suffix)
             tasks.append(
                 CollectionMediaTask(
                     snapshot_id=item.snapshot_id,
@@ -177,6 +118,7 @@ class CollectionMediaCoordinator:
         item: CollectionSnapshotItem,
         detail: WorkDetail,
         on_progress: Callable[[DownloadProgress], None] | None = None,
+        indexes: set[int] | None = None,
     ) -> CollectionMediaBatchResult:
         """执行图像计划并按逻辑任务恢复结果顺序。
 
@@ -187,17 +129,25 @@ class CollectionMediaCoordinator:
 
         Returns:
             按输入媒体顺序排列的逐媒体结果；视频只进入 deferred。
+
+        Args:
+            indexes: 可选的待执行媒体序号；重试时只传入未成功媒体。
         """
         plan = self.plan(item, detail)
+        tasks = tuple(
+            task
+            for task in plan.tasks
+            if indexes is None or task.media_index in indexes
+        )
         results = await asyncio.gather(
-            *(self._execute_one(task, detail, on_progress) for task in plan.tasks),
+            *(self._execute_one(task, detail, on_progress) for task in tasks),
             return_exceptions=True,
         )
         normalized = [
             result
             if isinstance(result, CollectionMediaItemResult)
             else self._failed_result(task, "download_failed")
-            for task, result in zip(plan.tasks, results, strict=True)
+            for task, result in zip(tasks, results, strict=True)
         ]
         return CollectionMediaBatchResult(
             snapshot_id=item.snapshot_id,
@@ -280,18 +230,3 @@ def _download_detail(detail: WorkDetail, task: CollectionMediaTask) -> WorkDetai
         f"{detail.title}_{detail.work_id}" if detail.title else detail.work_id
     )
     return detail.model_copy(update={"title": stable_title, "media": [safe_resource]})
-
-
-def _validate_media_url(value: str) -> None:
-    """拒绝空值和非 HTTP(S) 媒体地址。"""
-    parsed = urlsplit(value)
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        raise ValueError("media URL is invalid")
-
-
-def _safe_suffix(value: str) -> str:
-    """把缺失扩展名退化为 auto，并拒绝路径片段。"""
-    candidate = value.strip().lower() or "auto"
-    if not candidate.isalnum() or len(candidate) > 10:
-        raise ValueError("media suffix is invalid")
-    return candidate

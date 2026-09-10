@@ -5,6 +5,7 @@ from .factory import (
     BrowserRuntime,
     PublicationRuntime,
     create_browser_runtime,
+    create_collection_media_service,
     create_download_service,
     create_publication_runtime,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "ManagedAccountProofProvider",
     "PublicationRuntime",
     "create_browser_runtime",
+    "create_collection_media_service",
     "create_download_service",
     "create_publication_runtime",
 ]

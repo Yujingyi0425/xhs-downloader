@@ -16,7 +16,15 @@ from xhs_core.domain import (
 
 
 def item(feed_id: str = "feed-a", source_order: int = 0) -> CollectionSnapshotItem:
-    """构造不含敏感信息的合成收藏 membership。"""
+    """构造不含敏感信息的合成收藏 membership。
+
+    Args:
+        feed_id: 合成收藏作品标识。
+        source_order: 合成收藏顺序。
+
+    Returns:
+        合成收藏快照条目。
+    """
     return CollectionSnapshotItem(
         snapshot_id="synthetic-snapshot", feed_id=feed_id, source_order=source_order
     )
@@ -28,7 +36,16 @@ def detail(
     note_type: str = "image",
     image_urls: list[str] | None = None,
 ) -> CollectionFeedDetail:
-    """构造不含 token、Cookie 或真实用户数据的合成详情。"""
+    """构造不含 token、Cookie 或真实用户数据的合成详情。
+
+    Args:
+        feed_id: 合成收藏作品标识。
+        note_type: 合成笔记类型。
+        image_urls: 合成媒体地址列表。
+
+    Returns:
+        合成收藏详情。
+    """
     return CollectionFeedDetail(
         feed_id=feed_id,
         title="合成标题",

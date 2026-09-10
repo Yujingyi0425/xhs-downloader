@@ -6,6 +6,7 @@ from xhs_core.application import (
     BrowserExecutionService,
     BrowserTaskEphemeralInputChannel,
     BrowserTaskService,
+    CollectionMediaService,
     DownloadService,
     ExtensionAccountChallengeChannel,
     ExtensionCredentialService,
@@ -29,6 +30,7 @@ from .managed_task_executor import PlaywrightManagedTaskExecutor
 from .parsing import InitialStateParser
 from .sqlite import (
     SqliteBrowserTaskRepository,
+    SqliteCollectionMediaArtifactRepository,
     SqliteDownloadRepository,
     SqliteExtensionCredentialRepository,
     SqlitePublicationDraftRepository,
@@ -77,6 +79,23 @@ def create_download_service(settings: AppSettings) -> DownloadService:
         parser=InitialStateParser(settings),
         downloader=FileDownloader(settings, gateway),
         repository=SqliteDownloadRepository(
+            settings.state_dir.joinpath("downloads.db")
+        ),
+    )
+
+
+def create_collection_media_service(settings: AppSettings) -> CollectionMediaService:
+    """装配收藏夹媒体服务并复用同一套下载基础设施。
+
+    Args:
+        settings: 已验证的运行配置。
+
+    Returns:
+        尚未进入生命周期的收藏夹媒体服务。
+    """
+    return CollectionMediaService(
+        create_download_service(settings),
+        SqliteCollectionMediaArtifactRepository(
             settings.state_dir.joinpath("downloads.db")
         ),
     )

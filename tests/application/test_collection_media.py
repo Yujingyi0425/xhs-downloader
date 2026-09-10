@@ -27,9 +27,11 @@ class FakeDetailDownloader:
         *,
         failures: set[int] | None = None,
         wrong_indexes: set[int] | None = None,
+        wrong_kinds: set[int] | None = None,
     ) -> None:
         self.failures = failures or set()
         self.wrong_indexes = wrong_indexes or set()
+        self.wrong_kinds = wrong_kinds or set()
         self.calls: list[tuple[WorkDetail, set[int]]] = []
 
     async def download_detail(
@@ -38,7 +40,16 @@ class FakeDetailDownloader:
         indexes: set[int],
         on_progress: Callable[[DownloadProgress], None] | None = None,
     ) -> list[DownloadArtifact]:
-        """返回可控的合成 artifact 或抛出合成传输错误。"""
+        """返回可控的合成 artifact 或抛出合成传输错误。
+
+        Args:
+            detail: 已适配的合成详情。
+            indexes: 待下载的媒体序号。
+            on_progress: 未使用的合成进度回调。
+
+        Returns:
+            合成 artifact 列表。
+        """
         del on_progress
         self.calls.append((detail, indexes))
         media_index = next(iter(indexes))
@@ -49,19 +60,30 @@ class FakeDetailDownloader:
             if media_index in self.wrong_indexes
             else media_index
         )
+        returned_kind = (
+            MediaKind.VIDEO if media_index in self.wrong_kinds else MediaKind.IMAGE
+        )
         return [
             DownloadArtifact(
                 path=f"synthetic/{detail.work_id}/{returned_index}.jpg",
                 sha256="a" * 64,
                 size=10,
                 media_index=returned_index,
-                kind=MediaKind.IMAGE,
+                kind=returned_kind,
             )
         ]
 
 
 def make_item(work_id: str = "work-a", source_order: int = 0) -> CollectionSnapshotItem:
-    """构造不含 token、Cookie 或真实用户数据的收藏条目。"""
+    """构造不含 token、Cookie 或真实用户数据的收藏条目。
+
+    Args:
+        work_id: 合成作品标识。
+        source_order: 合成收藏顺序。
+
+    Returns:
+        合成收藏快照条目。
+    """
     return CollectionSnapshotItem(
         snapshot_id="synthetic-snapshot",
         feed_id=work_id,
@@ -76,7 +98,17 @@ def make_detail(
     title: str = "相同标题",
     work_type: WorkType = WorkType.GALLERY,
 ) -> WorkDetail:
-    """构造合成 canonical 详情。"""
+    """构造合成 canonical 详情。
+
+    Args:
+        work_id: 合成作品标识。
+        media: 合成媒体列表。
+        title: 合成标题。
+        work_type: 合成作品类型。
+
+    Returns:
+        合成 canonical 作品详情。
+    """
     return WorkDetail(
         work_id=work_id,
         source_url=f"https://www.xiaohongshu.com/explore/{work_id}",
@@ -93,7 +125,15 @@ def make_detail(
 
 
 def image(index: int, suffix: str = "jpg") -> MediaResource:
-    """构造一个合成图片媒体。"""
+    """构造一个合成图片媒体。
+
+    Args:
+        index: 一基媒体序号。
+        suffix: 合成扩展名。
+
+    Returns:
+        合成图片资源。
+    """
     return MediaResource(
         index=index,
         kind=MediaKind.IMAGE,

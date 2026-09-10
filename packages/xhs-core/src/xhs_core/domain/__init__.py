@@ -62,6 +62,14 @@ from .collection_enrichment_ports import (
     CollectionEnrichmentRepository,
     EnrichmentStateConflictError,
 )
+from .collection_media import (
+    CollectionMediaBatchRecord,
+    CollectionMediaBatchStatus,
+    CollectionMediaDeferredRecord,
+    CollectionMediaItemRecord,
+    CollectionMediaItemStatus,
+)
+from .collection_media_ports import CollectionMediaArtifactRepository
 from .collection_ports import CollectionIdempotencyConflictError, CollectionRepository
 from .errors import (
     BrowserTaskError,
@@ -181,6 +189,12 @@ __all__ = [
     "CollectionIdempotencyConflictError",
     "CollectionImportCommand",
     "CollectionImportItem",
+    "CollectionMediaArtifactRepository",
+    "CollectionMediaBatchRecord",
+    "CollectionMediaBatchStatus",
+    "CollectionMediaDeferredRecord",
+    "CollectionMediaItemRecord",
+    "CollectionMediaItemStatus",
     "CollectionRepository",
     "CollectionSnapshot",
     "CollectionSnapshotItem",
