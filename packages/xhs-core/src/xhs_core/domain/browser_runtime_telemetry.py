@@ -55,7 +55,14 @@ _BOOLEAN_FIELDS = (
 def sanitize_browser_runtime_telemetry(
     value: dict[str, Any] | None,
 ) -> dict[str, JsonValue] | None:
-    """裁剪 C7C 遥测，只保留固定版本、枚举和布尔值。"""
+    """裁剪 C7C 遥测，只保留固定版本、枚举和布尔值。
+
+    Args:
+        value: 扩展提交的原始遥测对象。
+
+    Returns:
+        通过白名单校验的遥测对象，或 ``None``。
+    """
     if not isinstance(value, dict):
         return None
     if (
@@ -85,7 +92,14 @@ def sanitize_browser_runtime_telemetry(
 def mark_browser_runtime_telemetry_submitted(
     diagnostics: dict[str, JsonValue] | None,
 ) -> dict[str, JsonValue] | None:
-    """在服务端接受失败 envelope 后标记 result submit 已完成。"""
+    """在服务端接受失败 envelope 后标记 result submit 已完成。
+
+    Args:
+        diagnostics: 终态结果中的诊断对象。
+
+    Returns:
+        带有服务端提交完成标记的诊断对象。
+    """
     if not isinstance(diagnostics, dict):
         return None
     telemetry = sanitize_browser_runtime_telemetry(

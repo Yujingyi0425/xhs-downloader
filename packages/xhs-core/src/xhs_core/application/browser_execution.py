@@ -136,10 +136,6 @@ class BrowserExecutionService:
         if status is BrowserTaskStatus.SUCCEEDED and result is None:
             raise BrowserTaskError("成功任务必须返回结构化结果")
         normalized_result = _normalize_terminal_result(task, status, result)
-        if status in {BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW}:
-            normalized_result = mark_browser_runtime_telemetry_submitted(
-                normalized_result
-            )
         transient_result = None
         persisted_result = normalized_result
         if status is BrowserTaskStatus.SUCCEEDED and normalized_result is not None:
@@ -276,8 +272,6 @@ class BrowserExecutionService:
         if not task or not valid_hash or not lease_active:
             raise BrowserTaskLeaseConflictError("浏览器任务租约无效或已经过期")
         return task
-
-
 def _allowed_transitions(
     status: BrowserTaskStatus,
 ) -> set[BrowserTaskStatus]:
@@ -300,5 +294,7 @@ def _normalize_terminal_result(
     if status is BrowserTaskStatus.SUCCEEDED and result is not None:
         return validate_browser_task_result(task.kind, result)
     if status in {BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW}:
-        return sanitize_browser_page_diagnostics(result)
+        return mark_browser_runtime_telemetry_submitted(
+            sanitize_browser_page_diagnostics(result)
+        )
     return None

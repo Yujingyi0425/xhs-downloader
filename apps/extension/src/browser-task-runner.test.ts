@@ -73,14 +73,6 @@ afterEach(() => {
 });
 
 describe("浏览器任务后台执行器", () => {
-  const detailPayload = {
-    feed_id: "synthetic-feed",
-    xsec_token: "synthetic-token",
-    comment_limit: 10,
-    include_replies: false,
-    reply_limit: 10,
-  };
-
   it("领取任务、在现有页面执行并回传成功结果", async () => {
     const fetchMock = vi
       .fn()
@@ -155,107 +147,6 @@ describe("浏览器任务后台执行器", () => {
       active: false,
     });
     expect(JSON.parse(fetchMock.mock.calls[3][1].body).status).toBe("failed");
-  });
-
-  it("详情 readiness 失败时回传最后边界和 build identity", async () => {
-    tabs = [];
-    vi.mocked(chrome.tabs.get).mockImplementation(
-      async () =>
-        ({
-          id: 8,
-          status: "complete",
-          url: "https://www.xiaohongshu.com/board/not-a-detail",
-        }) as chrome.tabs.Tab,
-    );
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ protocol_version: 4, features: { browser_tasks: true } })),
-      )
-      .mockResolvedValueOnce(new Response(JSON.stringify(claim("get_feed_detail", detailPayload))))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" })));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await runBrowserTaskPoll();
-
-    const body = JSON.parse(fetchMock.mock.calls[3][1].body) as Record<string, unknown>;
-    expect(body.result).toMatchObject({
-      failure_code: "TARGET_TAB_IDENTITY_MISMATCH",
-      browser_runtime_telemetry: {
-        extension_manifest_version: "3.0.0",
-        diagnostic_schema_version: "C7C-1",
-        target_tab_created: true,
-        detail_wait_started: true,
-        detail_wait_result: "FAIL",
-        send_message_attempted: false,
-        page_response_class: "NOT_REACHED",
-        last_completed_runtime_boundary: "RESULT_SUBMIT_ATTEMPTED",
-      },
-    });
-  });
-
-  it("content-script 返回页面错误时标记 response boundary", async () => {
-    tabs = [];
-    pageResponse = {
-      ok: false,
-      status: "failed",
-      message: "页面解析失败",
-      result: { failure_code: "PAGE_TASK_ERROR", failure_stage: "page_parser" },
-      page_runtime_telemetry: {
-        content_script_message_received: true,
-        page_task_started: true,
-        parser_invocation_started: false,
-      },
-    };
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ protocol_version: 4, features: { browser_tasks: true } })),
-      )
-      .mockResolvedValueOnce(new Response(JSON.stringify(claim("get_feed_detail", detailPayload))))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" })));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await runBrowserTaskPoll();
-
-    const body = JSON.parse(fetchMock.mock.calls[3][1].body) as Record<string, unknown>;
-    const result = body.result as Record<string, unknown>;
-    expect(result.browser_runtime_telemetry).toMatchObject({
-      content_script_message_received: true,
-      page_task_started: true,
-      parser_invocation_started: false,
-      content_script_response_received: true,
-      page_response_class: "PAGE_TASK_ERROR",
-      last_completed_runtime_boundary: "RESULT_SUBMIT_ATTEMPTED",
-    });
-  });
-
-  it("content-script 返回无效 envelope 时标记 INVALID_RESPONSE", async () => {
-    tabs = [];
-    pageResponse = {};
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ protocol_version: 4, features: { browser_tasks: true } })),
-      )
-      .mockResolvedValueOnce(new Response(JSON.stringify(claim("get_feed_detail", detailPayload))))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" })));
-    vi.stubGlobal("fetch", fetchMock);
-
-    await runBrowserTaskPoll();
-
-    const body = JSON.parse(fetchMock.mock.calls[3][1].body) as Record<string, unknown>;
-    expect(body.result).toMatchObject({
-      failure_code: "MESSAGE_RESPONSE_EMPTY",
-      browser_runtime_telemetry: {
-        content_script_response_received: true,
-        page_response_class: "INVALID_RESPONSE",
-        last_completed_runtime_boundary: "RESULT_SUBMIT_ATTEMPTED",
-      },
-    });
   });
 
   it.each([

@@ -14,21 +14,15 @@ import {
 import { executeBrowserSessionTask } from "./browser-session-runner";
 import { waitForDetailEnrichmentPage } from "./browser-detail-enrichment-runtime";
 import { mediaFailureResponse, waitForMediaDetailPage } from "./browser-media-task-runtime";
-import {
-  BrowserTaskExecutionError,
-  classifyMessageDispatchError,
-} from "./browser-task-errors";
-import {
-  BrowserRuntimeTelemetryBuilder,
-  classifySendMessageFailure,
-} from "./browser-runtime-telemetry";
+import { BrowserTaskExecutionError } from "./browser-task-errors";
+import { BrowserRuntimeTelemetryBuilder } from "./browser-runtime-telemetry";
+import { sendToTab, sendWhenReady } from "./browser-message-dispatch";
 import { clearExtensionCredential, ensureExtensionCredential } from "./extension-credential";
 import type { ExtensionCredential } from "./publication-types";
 import { loadSettings } from "./storage";
 
 const POLL_ALARM = "browser-task-poll";
 const EXPLORE_URL = "https://www.xiaohongshu.com/explore/";
-const PAGE_READY_ATTEMPTS = 20;
 const MAX_TASKS_PER_POLL = 4;
 
 let pollOperation: Promise<void> | undefined;
@@ -202,49 +196,6 @@ async function executeInNewTab(
     revokeInteraction();
     if (!keepOpen && tab?.id !== undefined) await chrome.tabs.remove(tab.id);
   }
-}
-
-async function sendToTab(
-  tabId: number,
-  request: BrowserPageTaskRequest,
-): Promise<BrowserPageTaskResponse> {
-  return chrome.tabs.sendMessage<BrowserPageTaskRequest, BrowserPageTaskResponse>(tabId, request);
-}
-
-async function sendWhenReady(
-  tabId: number,
-  request: BrowserPageTaskRequest,
-  assertLeaseActive: () => void,
-  telemetry: BrowserRuntimeTelemetryBuilder,
-): Promise<BrowserPageTaskResponse> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < PAGE_READY_ATTEMPTS; attempt += 1) {
-    try {
-      assertLeaseActive();
-      telemetry.markSendMessageAttempted();
-      const response = await chrome.tabs.sendMessage<
-        BrowserPageTaskRequest,
-        BrowserPageTaskResponse
-      >(tabId, request);
-      assertLeaseActive();
-      telemetry.markSendMessageResolved();
-      telemetry.markContentScriptResponseReceived();
-      if (!response || typeof response !== "object" || typeof response.ok !== "boolean") {
-        telemetry.markPageResponse("INVALID_RESPONSE");
-        throw new BrowserTaskExecutionError("MESSAGE_RESPONSE_EMPTY", "内容脚本返回了空响应");
-      }
-      telemetry.markPageResponse(response.ok ? "SUCCESS" : "PAGE_TASK_ERROR");
-      return response;
-    } catch (error) {
-      if (error instanceof BrowserTaskExecutionError) throw error;
-      telemetry.markSendMessageRejected(classifySendMessageFailure(error));
-      lastError = error;
-      await delay(250);
-    }
-  }
-  const code = classifyMessageDispatchError(lastError);
-  telemetry.markSendMessageRejected(classifySendMessageFailure(lastError));
-  throw new BrowserTaskExecutionError(code, "内容脚本未能在有界时间内响应");
 }
 
 function taskTargetUrl(task: BrowserTaskClaim["task"]): string {

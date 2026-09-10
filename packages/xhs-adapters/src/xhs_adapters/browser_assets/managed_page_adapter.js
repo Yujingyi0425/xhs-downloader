@@ -1205,6 +1205,12 @@
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
   }
 
+  // src/browser-runtime-telemetry.ts
+  function attachPageRuntimeTelemetry(error, telemetry) {
+    if (!error || typeof error !== "object") return;
+    error.page_runtime_telemetry = telemetry;
+  }
+
   // src/browser-page-runner.ts
   var SEARCH_READY_ATTEMPTS = 20;
   var SEARCH_READY_INTERVAL_MS = 250;
@@ -1248,10 +1254,23 @@
         await loadComments(page, options);
         currentState = await readLiveInitialState(page);
       }
-      return success(
-        "\u5E16\u5B50\u8BE6\u60C5\u8BFB\u53D6\u5B8C\u6210",
-        parseFeedDetailDocumentWithTelemetry(page, options, currentState).detail
-      );
+      const pageTelemetry = {
+        content_script_message_received: false,
+        page_task_started: true,
+        parser_invocation_started: true
+      };
+      try {
+        return {
+          ...success(
+            "\u5E16\u5B50\u8BE6\u60C5\u8BFB\u53D6\u5B8C\u6210",
+            parseFeedDetailDocumentWithTelemetry(page, options, currentState).detail
+          ),
+          page_runtime_telemetry: pageTelemetry
+        };
+      } catch (error) {
+        attachPageRuntimeTelemetry(error, pageTelemetry);
+        throw error;
+      }
     }
     if (task.kind === "get_feed_media") {
       const feedId = payloadText(task, "feed_id");

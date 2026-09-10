@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   BrowserRuntimeTelemetryBuilder,
+  attachPageRuntimeTelemetry,
+  browserRuntimeTelemetryFromCarrier,
   classifySendMessageFailure,
+  pageRuntimeTelemetryFromError,
   withBrowserRuntimeTelemetry,
 } from "./browser-runtime-telemetry";
 
@@ -52,8 +55,67 @@ describe("C7C 浏览器任务边界遥测", () => {
     ["The message port closed before a response was received.", "PORT_CLOSED"],
     ["The target tab was closed.", "TAB_REMOVED"],
     ["Unexpected extension runtime error", "RUNTIME_ERROR"],
+    ["", "UNKNOWN"],
   ] as const)("把 sendMessage 错误 %s 映射为 %s", (message, expected) => {
-    expect(classifySendMessageFailure(new Error(message))).toBe(expected);
+    expect(classifySendMessageFailure(message ? new Error(message) : "")).toBe(expected);
+  });
+
+  it("覆盖诊断 carrier 的有效、缺失和非法页面标记", () => {
+    const pageTelemetry = {
+      content_script_message_received: true,
+      page_task_started: true,
+      parser_invocation_started: true,
+    };
+    const error = new Error("synthetic");
+    attachPageRuntimeTelemetry(error, pageTelemetry);
+
+    expect(pageRuntimeTelemetryFromError(error)).toEqual(pageTelemetry);
+    expect(pageRuntimeTelemetryFromError(null)).toBeUndefined();
+    expect(pageRuntimeTelemetryFromError({ page_runtime_telemetry: null })).toBeUndefined();
+    expect(
+      pageRuntimeTelemetryFromError({
+        page_runtime_telemetry: {
+          content_script_message_received: true,
+          page_task_started: false,
+          parser_invocation_started: "invalid",
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      pageRuntimeTelemetryFromError({
+        page_runtime_telemetry: {
+          content_script_message_received: true,
+          page_task_started: "invalid",
+          parser_invocation_started: true,
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      pageRuntimeTelemetryFromError({
+        page_runtime_telemetry: { content_script_message_received: "invalid" },
+      }),
+    ).toBeUndefined();
+
+    const carrier = { browser_runtime_telemetry: new BrowserRuntimeTelemetryBuilder().snapshot() };
+    expect(browserRuntimeTelemetryFromCarrier(carrier)).toBe(carrier.browser_runtime_telemetry);
+    expect(browserRuntimeTelemetryFromCarrier(undefined)).toBeUndefined();
+    expect(browserRuntimeTelemetryFromCarrier({})).toBeUndefined();
+    attachPageRuntimeTelemetry(null, pageTelemetry);
+  });
+
+  it("覆盖无页面响应、详情等待失败和空结果 envelope", () => {
+    const telemetry = new BrowserRuntimeTelemetryBuilder();
+    telemetry.markDetailWaitStarted();
+    telemetry.markDetailWaitResult("FAIL");
+    telemetry.absorbPageRuntimeTelemetry(undefined);
+    expect(telemetry.snapshot()).toMatchObject({
+      detail_wait_result: "FAIL",
+      last_completed_runtime_boundary: "DETAIL_WAIT_STARTED",
+    });
+    expect(withBrowserRuntimeTelemetry(undefined, telemetry.snapshot())).toMatchObject({
+      browser_runtime_telemetry: { detail_wait_result: "FAIL" },
+    });
+    expect(classifySendMessageFailure({ toString: () => "tab still open" })).toBe("RUNTIME_ERROR");
   });
 
   it("只通过显式 envelope 携带 bounded telemetry", () => {
