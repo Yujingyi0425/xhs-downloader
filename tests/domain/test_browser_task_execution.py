@@ -115,6 +115,67 @@ def test_media_failure_diagnostics_preserve_only_known_stage_and_code() -> None:
     }
 
 
+def test_parser_telemetry_preserves_only_safe_bounded_fields() -> None:
+    """确保 parser 遥测只保留固定枚举、布尔值和计数。"""
+    diagnostics = sanitize_browser_page_diagnostics(
+        {
+            "failure_stage": "page_parser",
+            "failure_code": "PAGE_TASK_ERROR",
+            "parser_telemetry": {
+                "initial_state_anchor_present": True,
+                "initial_state_parse_result": "PARSED",
+                "note_root_present": True,
+                "note_detail_map_present": True,
+                "note_detail_map_count": 1,
+                "target_wrapper_found": True,
+                "target_wrapper_match_mode": "EXACT_KEY",
+                "target_note_present": True,
+                "target_note_id_match": False,
+                "author_object_present": True,
+                "author_id_present": True,
+                "image_list_present": True,
+                "image_list_length": 1,
+                "normalized_note_type": "IMAGE",
+                "last_completed_parser_boundary": "TARGET_NOTE_FOUND",
+                "parser_failure_subtype": "TARGET_NOTE_ID_MISMATCH",
+                "safe_exception_class": "Error",
+                "title": "用户原文",
+                "raw_exception": "secret raw exception",
+                "xsec_token": "secret-token",
+                "image_list_length_overflow": 1001,
+            },
+        }
+    )
+
+    assert diagnostics == {
+        "failure_stage": "page_parser",
+        "failure_code": "PAGE_TASK_ERROR",
+        "parser_telemetry": {
+            "initial_state_anchor_present": True,
+            "initial_state_parse_result": "PARSED",
+            "note_root_present": True,
+            "note_detail_map_present": True,
+            "note_detail_map_count": 1,
+            "target_wrapper_found": True,
+            "target_wrapper_match_mode": "EXACT_KEY",
+            "target_note_present": True,
+            "target_note_id_match": False,
+            "author_object_present": True,
+            "author_id_present": True,
+            "image_list_present": True,
+            "image_list_length": 1,
+            "normalized_note_type": "IMAGE",
+            "last_completed_parser_boundary": "TARGET_NOTE_FOUND",
+            "parser_failure_subtype": "TARGET_NOTE_ID_MISMATCH",
+            "safe_exception_class": "Error",
+        },
+    }
+    serialized = json.dumps(diagnostics, ensure_ascii=False)
+    assert "用户原文" not in serialized
+    assert "secret raw exception" not in serialized
+    assert "secret-token" not in serialized
+
+
 def test_navigation_diagnostics_preserve_bounded_fields_and_drop_secrets() -> None:
     """确保导航遥测只保留批准的有界事实。"""
     diagnostics = sanitize_browser_page_diagnostics(
