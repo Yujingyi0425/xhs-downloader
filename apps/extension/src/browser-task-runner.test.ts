@@ -210,6 +210,92 @@ describe("浏览器任务后台执行器", () => {
     );
   });
 
+  it("详情 enrichment 等待身份匹配的页面完成后再发送解析消息", async () => {
+    let tabReads = 0;
+    vi.mocked(chrome.tabs.get).mockImplementation(async () => {
+      tabReads += 1;
+      return {
+        id: 8,
+        status: tabReads === 1 ? "loading" : "complete",
+        url: createdUrl,
+      };
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            protocol_version: 4,
+            features: { browser_tasks: true },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            claim("get_feed_detail", {
+              feed_id: "synthetic-feed",
+              xsec_token: "synthetic-token",
+            }),
+          ),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "succeeded" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(tabReads).toBe(2);
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      8,
+      expect.objectContaining({ type: "browser-page-task" }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body).status).toBe("succeeded");
+  });
+
+  it("详情 enrichment 在错误页面上下文中 fail closed 且不发送解析消息", async () => {
+    vi.mocked(chrome.tabs.get).mockImplementation(
+      () =>
+        Promise.resolve({
+          id: 8,
+          status: "complete",
+          url: "https://www.xiaohongshu.com/board/synthetic-board/synthetic-feed",
+        }) as never,
+    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            protocol_version: 4,
+            features: { browser_tasks: true },
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify(
+            claim("get_feed_detail", {
+              feed_id: "synthetic-feed",
+              xsec_token: "synthetic-token",
+            }),
+          ),
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: "failed" })));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(chrome.tabs.sendMessage).not.toHaveBeenCalled();
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "failed",
+      message: "详情页与目标帖子不一致",
+    });
+  });
+
   it("跟随页面返回的站内地址后重新读取当前账号主页", async () => {
     const responses = [
       {

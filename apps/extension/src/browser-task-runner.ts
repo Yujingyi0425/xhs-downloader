@@ -13,7 +13,11 @@ import {
 } from "./browser-task-service";
 import { executeBrowserSessionTask } from "./browser-session-runner";
 import { mediaFailureResponse, waitForMediaDetailPage } from "./browser-media-task-runtime";
-import { BrowserTaskExecutionError, classifyMessageDispatchError } from "./browser-task-errors";
+import {
+  BrowserTaskExecutionError,
+  classifyMessageDispatchError,
+  isSupportedDetailPageForFeed,
+} from "./browser-task-errors";
 import { clearExtensionCredential, ensureExtensionCredential } from "./extension-credential";
 import type { ExtensionCredential } from "./publication-types";
 import { loadSettings } from "./storage";
@@ -133,6 +137,9 @@ async function executeInNewTab(
       request.task.task_id,
       request.task.kind,
     );
+    if (request.task.kind === "get_feed_detail") {
+      await waitForDetailEnrichmentPage(tab.id, request, assertLeaseActive);
+    }
     if (request.task.kind === "get_feed_media") {
       await waitForMediaDetailPage(tab.id, request, assertLeaseActive, {
         created_tab_id: tab.id,
@@ -175,6 +182,44 @@ async function executeInNewTab(
     revokeInteraction();
     if (!keepOpen && tab?.id !== undefined) await chrome.tabs.remove(tab.id);
   }
+}
+
+/** 在详情 enrichment 解析前等待有界、身份匹配的详情页状态。 */
+async function waitForDetailEnrichmentPage(
+  tabId: number,
+  request: BrowserPageTaskRequest,
+  assertLeaseActive: () => void,
+): Promise<void> {
+  const feedId = taskPayloadText(request.task.payload, "feed_id");
+  for (let attempt = 0; attempt < PAGE_READY_ATTEMPTS; attempt += 1) {
+    assertLeaseActive();
+    let tab: chrome.tabs.Tab;
+    try {
+      tab = await chrome.tabs.get(tabId);
+    } catch {
+      throw new BrowserTaskExecutionError("TARGET_TAB_NOT_FOUND", "目标详情页不可用");
+    }
+    if (tab.status === "complete") {
+      if (!tab.url) {
+        throw new BrowserTaskExecutionError(
+          "DETAIL_NAVIGATION_FAILED",
+          "详情页没有可验证地址",
+        );
+      }
+      if (!isSupportedDetailPageForFeed(tab.url, feedId)) {
+        throw new BrowserTaskExecutionError(
+          "TARGET_TAB_IDENTITY_MISMATCH",
+          "详情页与目标帖子不一致",
+        );
+      }
+      return;
+    }
+    await delay(250);
+  }
+  throw new BrowserTaskExecutionError(
+    "DETAIL_NAVIGATION_FAILED",
+    "详情页未在有界时间内就绪",
+  );
 }
 
 async function sendToTab(
