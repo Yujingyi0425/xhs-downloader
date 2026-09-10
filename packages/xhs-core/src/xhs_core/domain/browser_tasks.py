@@ -29,6 +29,18 @@ EPHEMERAL_XSEC_READ_KINDS = frozenset(
     {BrowserTaskKind.GET_FEED_DETAIL, BrowserTaskKind.GET_FEED_MEDIA}
 )
 
+XSEC_TOKEN_TASK_KINDS = frozenset(
+    {
+        BrowserTaskKind.GET_FEED_DETAIL,
+        BrowserTaskKind.GET_FEED_MEDIA,
+        BrowserTaskKind.GET_USER_PROFILE,
+        BrowserTaskKind.SET_LIKE,
+        BrowserTaskKind.SET_FAVORITE,
+        BrowserTaskKind.POST_COMMENT,
+        BrowserTaskKind.REPLY_COMMENT,
+    }
+)
+
 
 class BrowserTaskStatus(StrEnum):
     """通用浏览器任务状态。"""

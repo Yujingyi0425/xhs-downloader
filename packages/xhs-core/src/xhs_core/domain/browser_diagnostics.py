@@ -1,6 +1,7 @@
 """浏览器页面失败诊断的服务端白名单规则。"""
 
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import JsonValue
 
@@ -69,6 +70,9 @@ _SAFE_TERMINAL_MESSAGES = {
     BrowserTaskStatus.FAILED: "浏览器任务执行失败，可安全重试",
     BrowserTaskStatus.NEEDS_REVIEW: "浏览器操作结果无法确认，请人工核对平台状态",
 }
+_SENSITIVE_BROWSER_FIELDS = frozenset(
+    {"authorization", "cookie", "pending_url", "raw_url_query", "xsec_token"}
+)
 
 
 def sanitize_browser_page_diagnostics(
@@ -157,25 +161,88 @@ def sanitize_browser_task_message(
 
 
 def sanitize_stored_browser_task(task: BrowserTask) -> BrowserTask:
-    """清洗从旧持久化记录加载的非成功终态。
+    """清洗即将进入或已经来自持久化边界的浏览器任务。
 
     Args:
         task: 仓储解析出的旧任务快照。
 
     Returns:
-        失败数据已经白名单化的任务；其他状态原样返回。
+        不含浏览器访问 secret 和敏感请求上下文的任务快照。
     """
-    if task.status not in _SAFE_TERMINAL_MESSAGES:
-        return task
-    safe_result = sanitize_browser_page_diagnostics(task.result)
-    safe_message = sanitize_browser_task_message(task.status, task.message)
-    if task.result == safe_result and task.message == safe_message:
+    safe_payload = _sanitize_browser_json(task.payload)
+    safe_result = (
+        sanitize_browser_page_diagnostics(task.result)
+        if task.status in _SAFE_TERMINAL_MESSAGES
+        else _sanitize_browser_json(task.result)
+    )
+    safe_message = (
+        sanitize_browser_task_message(task.status, task.message)
+        if task.status in _SAFE_TERMINAL_MESSAGES
+        else task.message
+    )
+    if (
+        task.payload == safe_payload
+        and task.result == safe_result
+        and task.message == safe_message
+    ):
         return task
     return task.model_copy(
         update={
+            "payload": safe_payload,
             "result": safe_result,
             "message": safe_message,
         }
+    )
+
+
+def sanitize_browser_task_result(
+    value: dict[str, Any] | None,
+) -> dict[str, JsonValue] | None:
+    """移除成功结果中的 secret-bearing 字段和 URL 查询参数。
+
+    Args:
+        value: 浏览器执行器返回的成功结果。
+
+    Returns:
+        可安全持久化的结果，或空结果。
+    """
+    sanitized = _sanitize_browser_json(value)
+    return sanitized if isinstance(sanitized, dict) else None
+
+
+def _sanitize_browser_json(value: Any) -> JsonValue | None:
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_browser_json(item)
+            for key, item in value.items()
+            if key.lower() not in _SENSITIVE_BROWSER_FIELDS
+        }
+    if isinstance(value, list):
+        return [_sanitize_browser_json(item) for item in value]
+    if isinstance(value, str):
+        return _sanitize_browser_url(value)
+    return value
+
+
+def _sanitize_browser_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.query:
+        return value
+    safe_query = [
+        (key, item)
+        for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+        if key.lower() not in _SENSITIVE_BROWSER_FIELDS
+    ]
+    if len(safe_query) == len(parse_qsl(parsed.query, keep_blank_values=True)):
+        return value
+    return urlunsplit(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            urlencode(safe_query),
+            parsed.fragment,
+        )
     )
 
 

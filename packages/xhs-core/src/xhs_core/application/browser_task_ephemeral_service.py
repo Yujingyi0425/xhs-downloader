@@ -6,6 +6,7 @@ from uuid import uuid4
 from pydantic import JsonValue
 
 from xhs_core.domain import (
+    XSEC_TOKEN_TASK_KINDS,
     BrowserDriver,
     BrowserTask,
     BrowserTaskError,
@@ -37,6 +38,28 @@ class BrowserTaskEphemeralServiceMixin:
             payload: 包含完整详情输入的结构化 payload。
             request_id: 可选的调用方幂等请求标识。
             target_driver: 提交时固定的浏览器执行驱动。
+            _kind: 详情或媒体任务类型。
+
+        Returns:
+            持久化 payload 不含 token 的浏览器任务。
+        """
+        return await self._submit_ephemeral_xsec_task(
+            payload, request_id, target_driver, _kind
+        )
+
+    async def _submit_ephemeral_xsec_task(
+        self,
+        payload: dict[str, JsonValue],
+        request_id: str | None,
+        target_driver: BrowserDriver,
+        _kind: BrowserTaskKind,
+    ) -> BrowserTask:
+        """提交任意含 xsec token 的任务并隔离其输入。
+
+        Args:
+            payload: 包含完整详情输入的结构化 payload。
+            request_id: 可选的调用方幂等请求标识。
+            target_driver: 提交时固定的浏览器执行驱动。
 
         Returns:
             持久化 payload 不含 token 的浏览器任务。
@@ -45,11 +68,11 @@ class BrowserTaskEphemeralServiceMixin:
             BrowserTaskError: 输入、驱动或幂等请求不合法。
         """
         if not browser_driver_supports(target_driver, _kind):
-            raise BrowserTaskError("当前浏览器执行器尚未支持详情任务")
+            raise BrowserTaskError("当前浏览器执行器尚未支持该任务")
         full_payload = validate_browser_task_payload(_kind, payload)
         token = full_payload.get("xsec_token")
         if not isinstance(token, str) or not token:
-            raise BrowserTaskError("详情任务缺少临时访问令牌")
+            raise BrowserTaskError("任务缺少临时访问令牌")
         persisted_payload = dict(full_payload)
         persisted_payload.pop("xsec_token", None)
         async with self._submit_lock:
@@ -142,9 +165,7 @@ class BrowserTaskEphemeralServiceMixin:
                 clear_lease=True,
             ):
                 if (
-                    task.kind
-                    in {BrowserTaskKind.GET_FEED_DETAIL, BrowserTaskKind.GET_FEED_MEDIA}
-                    and "xsec_token" not in task.payload
+                    task.kind in XSEC_TOKEN_TASK_KINDS
                 ):
                     await self._ephemeral_channel.discard(task.task_id)
                 return canceled

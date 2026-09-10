@@ -8,6 +8,7 @@ from pydantic import JsonValue
 
 from xhs_core.domain import (
     EPHEMERAL_XSEC_READ_KINDS,
+    XSEC_TOKEN_TASK_KINDS,
     BrowserDriver,
     BrowserTask,
     BrowserTaskClaim,
@@ -18,6 +19,7 @@ from xhs_core.domain import (
     browser_task_may_write_platform,
     sanitize_browser_page_diagnostics,
     sanitize_browser_task_message,
+    sanitize_browser_task_result,
 )
 from xhs_core.domain.browser_ports import BrowserTaskRepository
 from xhs_core.domain.browser_requests import validate_browser_task_result
@@ -82,7 +84,7 @@ class BrowserExecutionService:
         )
         if (
             task
-            and task.kind in EPHEMERAL_XSEC_READ_KINDS
+            and task.kind in XSEC_TOKEN_TASK_KINDS
             and "xsec_token" not in task.payload
         ):
             secret = await self._ephemeral_channel.consume(task.task_id)
@@ -135,26 +137,23 @@ class BrowserExecutionService:
         normalized_result = _normalize_terminal_result(task, status, result)
         transient_result = None
         persisted_result = normalized_result
-        if (
-            status is BrowserTaskStatus.SUCCEEDED
-            and task.kind in EPHEMERAL_XSEC_READ_KINDS
-            and "xsec_token" not in task.payload
-            and normalized_result is not None
-        ):
-            transient_result = normalized_result
-            if task.kind is BrowserTaskKind.GET_FEED_MEDIA:
-                persisted_result = {
-                    "feed_id": normalized_result.get("feed_id", ""),
-                    "note_type": normalized_result.get("note_type", "unknown"),
-                    "media_count": len(normalized_result.get("media", [])),
-                }
-            else:
-                persisted_result = dict(normalized_result)
-                persisted_result.pop("xsec_token", None)
-            await self._ephemeral_channel.publish_result(task.task_id, transient_result)
-        ephemeral_detail = (
-            task.kind in EPHEMERAL_XSEC_READ_KINDS and "xsec_token" not in task.payload
-        )
+        if status is BrowserTaskStatus.SUCCEEDED and normalized_result is not None:
+            persisted_result = sanitize_browser_task_result(normalized_result)
+            if task.kind in EPHEMERAL_XSEC_READ_KINDS:
+                transient_result = normalized_result
+                if task.kind is BrowserTaskKind.GET_FEED_MEDIA:
+                    persisted_result = {
+                        "feed_id": normalized_result.get("feed_id", ""),
+                        "note_type": normalized_result.get("note_type", "unknown"),
+                        "media_count": len(normalized_result.get("media", [])),
+                    }
+            elif persisted_result != normalized_result:
+                transient_result = normalized_result
+            if transient_result is not None:
+                await self._ephemeral_channel.publish_result(
+                    task.task_id, transient_result
+                )
+        ephemeral_detail = task.kind in XSEC_TOKEN_TASK_KINDS
         log_discarded_reason(
             task_id,
             status,

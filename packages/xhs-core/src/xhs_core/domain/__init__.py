@@ -13,12 +13,14 @@ from .account_consistency import (
 from .browser_diagnostics import (
     sanitize_browser_page_diagnostics,
     sanitize_browser_task_message,
+    sanitize_browser_task_result,
     sanitize_stored_browser_task,
 )
 from .browser_ports import BrowserTaskExecutor
 from .browser_sessions import BrowserCookieDeletionResult, LoginQrCodeResult
 from .browser_tasks import (
     EPHEMERAL_XSEC_READ_KINDS,
+    XSEC_TOKEN_TASK_KINDS,
     BrowserDriver,
     BrowserTask,
     BrowserTaskClaim,
@@ -148,6 +150,7 @@ __all__ = [
     "ENRICHMENT_VERSION",
     "EPHEMERAL_XSEC_READ_KINDS",
     "TERMINAL_ENRICHMENT_STATUSES",
+    "XSEC_TOKEN_TASK_KINDS",
     "AccountConsistencyError",
     "AccountConsistencyGuard",
     "AccountConsistencyStatus",
@@ -259,6 +262,7 @@ __all__ = [
     "overall_video_status",
     "sanitize_browser_page_diagnostics",
     "sanitize_browser_task_message",
+    "sanitize_browser_task_result",
     "sanitize_stored_browser_task",
     "split_extension_identity",
 ]

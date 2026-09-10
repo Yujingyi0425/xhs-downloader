@@ -8,6 +8,7 @@ from uuid import uuid4
 from pydantic import JsonValue
 
 from xhs_core.domain import (
+    XSEC_TOKEN_TASK_KINDS,
     BrowserDriver,
     BrowserTask,
     BrowserTaskError,
@@ -76,6 +77,13 @@ class BrowserTaskService(BrowserTaskEphemeralServiceMixin):
         Raises:
             BrowserTaskError: 目标驱动不支持该任务，或幂等标识被不同请求复用。
         """
+        if kind in XSEC_TOKEN_TASK_KINDS:
+            return await self._submit_ephemeral_xsec_task(
+                payload,
+                request_id,
+                target_driver,
+                kind,
+            )
         if not browser_driver_supports(target_driver, kind):
             raise BrowserTaskError(
                 f"当前浏览器执行器尚未支持{kind.value}任务，请改用其他执行器"
