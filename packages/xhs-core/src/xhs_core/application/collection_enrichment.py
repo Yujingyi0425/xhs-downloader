@@ -18,6 +18,7 @@ from xhs_core.domain import (
 from xhs_core.domain.collection_enrichment_ports import CollectionEnrichmentRepository
 
 from .collection_enrichment_helpers import detail_request_id, item_summary, summary
+from .collection_selection import CollectionSelectionError, select_snapshot_items
 
 
 class DetailCapability(Protocol):
@@ -111,12 +112,15 @@ class CollectionDetailEnrichmentService:
         self,
         snapshot_id: str,
         options: CollectionDetailEnrichmentOptions | None = None,
+        *,
+        selected_feed_ids: list[str] | None = None,
     ) -> CollectionEnrichmentSummary:
         """执行一批收藏详情 enrichment。
 
         Args:
             snapshot_id: 已存在的收藏快照标识。
             options: 有界详情读取选项。
+            selected_feed_ids: 可选的稳定 feed identity 选择；为空表示全量。
 
         Returns:
             按 membership source_order 排列的安全汇总。
@@ -128,8 +132,14 @@ class CollectionDetailEnrichmentService:
         if snapshot is None:
             raise UnknownSnapshotError(snapshot_id)
         items = await self._collections.list_snapshot_items(snapshot_id)
-        selected = items[: (options or CollectionDetailEnrichmentOptions()).limit]
         opts = options or CollectionDetailEnrichmentOptions()
+        if selected_feed_ids is not None and opts.limit is not None:
+            raise CollectionSelectionError("不能同时指定 selected_feed_ids 和 limit")
+        selected = select_snapshot_items(
+            items, selected_feed_ids, snapshot_id=snapshot_id
+        )
+        if selected_feed_ids is None:
+            selected = selected[: opts.limit]
         summaries: list[CollectionEnrichmentItemSummary | None] = [None] * len(selected)
         queue: asyncio.Queue[tuple[int, object] | None] = asyncio.Queue()
         for index, item in enumerate(selected):

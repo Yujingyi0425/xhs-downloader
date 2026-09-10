@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from xhs_core.application import (
     CollectionImageProductionService,
     CollectionMediaService,
+    CollectionSelectionError,
     ExtensionCredentialService,
 )
 
@@ -64,8 +65,12 @@ def create_collection_image_router(
         await _require_snapshot_board(repository, snapshot_id, payload.board_id)
         try:
             result = await service.process_snapshot(
-                snapshot_id, retry_failed=payload.retry_failed
+                snapshot_id,
+                retry_failed=payload.retry_failed,
+                selected_feed_ids=payload.selected_feed_ids,
             )
+        except CollectionSelectionError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         except LookupError as error:
             raise HTTPException(status_code=404, detail="收藏夹快照不存在") from error
         return _response(result)
@@ -85,9 +90,7 @@ def create_collection_image_router(
     return router
 
 
-async def _require_snapshot_board(
-    repository, snapshot_id: str, board_id: str
-) -> None:
+async def _require_snapshot_board(repository, snapshot_id: str, board_id: str) -> None:
     snapshot = await repository.get_snapshot(snapshot_id)
     if snapshot is None or snapshot.board_id != board_id:
         raise HTTPException(status_code=404, detail="收藏夹快照不存在")

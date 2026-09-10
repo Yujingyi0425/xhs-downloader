@@ -56,11 +56,18 @@ async def create_snapshot(database: Path, feeds: list[str]) -> str:
     return snapshot.snapshot_id
 
 
-def detail(feed_id: str = "feed-a") -> FeedDetailResult:
+def detail(
+    feed_id: str = "feed-a",
+    *,
+    note_type: str = "image",
+    image_urls: list[str] | None = None,
+) -> FeedDetailResult:
     """Build a synthetic detail result with nested comments.
 
     Args:
         feed_id: Synthetic feed identifier.
+        note_type: Synthetic note type.
+        image_urls: Synthetic image locators.
 
     Returns:
         A synthetic detail result.
@@ -75,9 +82,10 @@ def detail(feed_id: str = "feed-a") -> FeedDetailResult:
         xsec_token="synthetic-xsec-never-persist",
         title="合成标题",
         body="Unicode 正文",
+        note_type=note_type,
         author=author,
         metrics=FeedMetrics(liked=True, liked_count="7"),
-        image_urls=["https://example.invalid/image.jpg"],
+        image_urls=image_urls or ["https://example.invalid/image.jpg"],
         published_at=1_700_000_000,
         ip_location="合成地点",
         comments=[comment],

@@ -18,6 +18,7 @@ from .collection_media_service import (
     CollectionMediaService,
     collection_media_request_id,
 )
+from .collection_selection import select_snapshot_items
 from .collection_work_mapping import collection_feed_detail_to_work_detail
 
 
@@ -64,6 +65,7 @@ class CollectionImageProductionService:
         options: CollectionDetailEnrichmentOptions | None = None,
         *,
         retry_failed: bool = False,
+        selected_feed_ids: list[str] | None = None,
     ) -> CollectionImageBatchResult:
         """先执行现有 enrichment，再执行图片媒体并持久化结果。
 
@@ -71,12 +73,20 @@ class CollectionImageProductionService:
             snapshot_id: 已存在的收藏快照标识。
             options: 现有 enrichment 的有界选项。
             retry_failed: 是否只重试未成功的图片媒体。
+            selected_feed_ids: 可选的稳定 feed identity 选择；为空表示全量。
 
         Returns:
             每条收藏独立的有序状态摘要。
         """
-        await self._enrichment.enrich_snapshot(snapshot_id, options)
-        return await self._collect_results(snapshot_id, retry_failed, execute=True)
+        await self._enrichment.enrich_snapshot(
+            snapshot_id, options, selected_feed_ids=selected_feed_ids
+        )
+        return await self._collect_results(
+            snapshot_id,
+            retry_failed,
+            execute=True,
+            selected_feed_ids=selected_feed_ids,
+        )
 
     async def read_snapshot(self, snapshot_id: str) -> CollectionImageBatchResult:
         """只读收藏图片状态，不重新 enrichment 或下载媒体。
@@ -90,11 +100,19 @@ class CollectionImageProductionService:
         return await self._collect_results(snapshot_id, False, execute=False)
 
     async def _collect_results(
-        self, snapshot_id: str, retry_failed: bool, *, execute: bool
+        self,
+        snapshot_id: str,
+        retry_failed: bool,
+        *,
+        execute: bool,
+        selected_feed_ids: list[str] | None = None,
     ) -> CollectionImageBatchResult:
         if await self._collections.get_snapshot(snapshot_id) is None:
             raise LookupError(snapshot_id)
         items = await self._collections.list_snapshot_items(snapshot_id)
+        items = select_snapshot_items(
+            items, selected_feed_ids, snapshot_id=snapshot_id
+        )
         summary = await self._enrichment.list_snapshot_enrichments(snapshot_id)
         records = {entry.feed_id: entry for entry in summary.items}
         results = [

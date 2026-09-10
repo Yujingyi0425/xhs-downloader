@@ -11,6 +11,7 @@ from xhs_adapters.sqlite import (
 from xhs_core.application import (
     CollectionDetailEnrichmentOptions,
     CollectionDetailEnrichmentService,
+    CollectionSelectionError,
 )
 from xhs_core.domain import ProviderError, ProviderFailureCode, ProviderKind
 
@@ -158,3 +159,48 @@ async def test_identity_mismatch_is_terminal_and_concurrency_is_bounded(tmp_path
     )
     assert all(item.status.value == "failed_terminal" for item in result.items)
     assert runtime.maximum <= 3
+
+
+@pytest.mark.asyncio
+async def test_selected_feed_ids_only_enrich_selected_items_in_snapshot_order(tmp_path):
+    """选择 feed identity 后只 enrichment 指定条目并保持快照顺序。
+
+    Args:
+        tmp_path: 测试临时目录。
+    """
+    snapshot_id = await create_snapshot(
+        tmp_path / "state.db", ["feed-a", "feed-b", "feed-c"]
+    )
+    runtime = _Runtime()
+    service, _ = _service(tmp_path / "state.db", runtime)
+
+    result = await service.enrich_snapshot(
+        snapshot_id, selected_feed_ids=["feed-c", "feed-a"]
+    )
+
+    assert [item.feed_id for item in result.items] == ["feed-a", "feed-c"]
+    assert {feed_id for feed_id, _ in runtime.calls} == {"feed-a", "feed-c"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "selected_feed_ids",
+    [["feed-a", "feed-a"], ["feed-unknown"]],
+)
+async def test_invalid_selected_feed_ids_are_rejected_before_provider_calls(
+    tmp_path, selected_feed_ids
+):
+    """重复或跨 snapshot identity 在 provider 调用前被拒绝。
+
+    Args:
+        tmp_path: 测试临时目录。
+        selected_feed_ids: 待校验的合成选择。
+    """
+    snapshot_id = await create_snapshot(tmp_path / "state.db", ["feed-a", "feed-b"])
+    runtime = _Runtime()
+    service, _ = _service(tmp_path / "state.db", runtime)
+
+    with pytest.raises(CollectionSelectionError):
+        await service.enrich_snapshot(snapshot_id, selected_feed_ids=selected_feed_ids)
+
+    assert runtime.calls == []

@@ -73,17 +73,22 @@ class FakeEnrichment:
         self.entries = entries
         self.calls = 0
 
-    async def enrich_snapshot(self, snapshot_id, options=None):
+    async def enrich_snapshot(
+        self, snapshot_id, options=None, *, selected_feed_ids=None
+    ):
         """记录编排调用并返回合成汇总。
 
         Args:
             snapshot_id: 待处理的快照标识。
             options: 未使用的合成选项。
+            selected_feed_ids: 选择的合成 feed identity。
 
         Returns:
             合成 enrichment 汇总。
         """
         self.calls += 1
+        self.selected_calls = getattr(self, "selected_calls", [])
+        self.selected_calls.append(selected_feed_ids)
         return self.summary(snapshot_id)
 
     async def list_snapshot_enrichments(self, snapshot_id):

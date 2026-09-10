@@ -42,6 +42,7 @@ from .collection_media import (
     DeferredCollectionMedia,
 )
 from .collection_media_service import CollectionMediaService
+from .collection_selection import CollectionSelectionError
 from .collection_work_mapping import collection_feed_detail_to_work_detail
 from .download import DownloadService
 from .download_tasks import DownloadTaskCoordinator
@@ -87,6 +88,7 @@ __all__ = [
     "CollectionMediaService",
     "CollectionMediaStatus",
     "CollectionMediaTask",
+    "CollectionSelectionError",
     "CollectionService",
     "DeferredCollectionMedia",
     "DownloadService",

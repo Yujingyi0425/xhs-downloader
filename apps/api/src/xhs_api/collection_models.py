@@ -141,12 +141,15 @@ class CollectionEnrichAcceptedResponse(BaseModel):
 
 
 class CollectionImageProcessRequest(BaseModel):
-    """收藏图片生产请求；只接受非敏感的快照身份和重试标志。"""
+    """收藏图片生产请求；只接受非敏感的快照身份和选择标志。"""
 
     model_config = ConfigDict(extra="forbid")
 
     board_id: str = Field(min_length=1, max_length=256)
     retry_failed: bool = False
+    selected_feed_ids: list[str] | None = Field(
+        default=None, min_length=1, max_length=500
+    )
 
 
 class CollectionImageItemResponse(BaseModel):

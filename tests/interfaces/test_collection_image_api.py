@@ -62,18 +62,23 @@ class FakeProduction:
         )
         self.process_calls = 0
         self.read_calls = 0
+        self.selected_feed_ids = []
 
-    async def process_snapshot(self, snapshot_id, *, retry_failed=False):
+    async def process_snapshot(
+        self, snapshot_id, *, retry_failed=False, selected_feed_ids=None
+    ):
         """记录一次生产调用。
 
         Args:
             snapshot_id: 待处理的快照标识。
             retry_failed: 是否重试失败项。
+            selected_feed_ids: 选择的合成 feed identity。
 
         Returns:
             合成图片生产结果。
         """
         self.process_calls += 1
+        self.selected_feed_ids.append(selected_feed_ids)
         return self.result
 
     async def read_snapshot(self, snapshot_id):
@@ -105,9 +110,14 @@ async def test_image_process_endpoint_authenticates_and_returns_safe_status() ->
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://127.0.0.1:5556"
     ) as client:
-        processed = await client.post(
+        default_processed = await client.post(
             "/xhs/collections/snapshots/snapshot-1/process-images",
             json={"board_id": "board-1"},
+            headers=headers,
+        )
+        processed = await client.post(
+            "/xhs/collections/snapshots/snapshot-1/process-images",
+            json={"board_id": "board-1", "selected_feed_ids": ["feed-1"]},
             headers=headers,
         )
         read = await client.get(
@@ -123,11 +133,13 @@ async def test_image_process_endpoint_authenticates_and_returns_safe_status() ->
             json={"board_id": "board-1"},
         )
 
+    assert default_processed.status_code == 200
     assert processed.status_code == 200
     assert processed.json()["items"][0]["success_count"] == 1
     assert read.status_code == 200
     assert read.json()["snapshot_id"] == "snapshot-1"
     assert wrong_board.status_code == 404
     assert unauthorized.status_code == 401
-    assert production.process_calls == 1
+    assert production.process_calls == 2
     assert production.read_calls == 1
+    assert production.selected_feed_ids == [None, ["feed-1"]]
