@@ -16,6 +16,7 @@ import { CollectionCaptureController } from "./collection-controller";
 import { createCollectionPanel } from "./collection-panel";
 import { sendCollectionImportAndProcess } from "./collection-import-orchestration";
 import { shouldOpenCollectionPanel } from "./collection-action-routing";
+import { parserTelemetryFromError } from "./feed-detail-parser";
 
 const collectionPanel = createCollectionPanel(
   document,
@@ -57,6 +58,7 @@ chrome.runtime.onMessage.addListener(
       .then(sendResponse)
       .catch((error: unknown) => {
         const failureCode = classifyPageTaskError(message.task.kind, error);
+        const parserTelemetry = parserTelemetryFromError(error);
         sendResponse({
           ok: false,
           message:
@@ -70,6 +72,7 @@ chrome.runtime.onMessage.addListener(
             ...buildPageCompatibilityDiagnostics(document, location.href),
             failure_code: failureCode,
             failure_stage: "page_parser",
+            ...(parserTelemetry ? { parser_telemetry: parserTelemetry } : {}),
           },
         });
       });

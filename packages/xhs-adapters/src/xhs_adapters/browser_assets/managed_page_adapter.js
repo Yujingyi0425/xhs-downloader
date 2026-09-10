@@ -770,43 +770,213 @@
     return "unknown";
   }
 
-  // src/feed-detail-parser.ts
-  function parseFeedDetailDocument(page, options, currentState) {
-    const state = currentState ?? latestInitialState(page);
-    const noteState = dataRecord(state.note);
-    const detailMap = dataRecord(noteState.noteDetailMap);
-    const wrapper = findDetail(detailMap, options.feedId);
-    const note = dataRecord(wrapper.note);
-    const author = parseFeedAuthor(note.user);
-    if (!author || dataText(note.noteId) !== options.feedId) {
-      throw new Error("\u8BE6\u60C5\u9875\u6570\u636E\u4E0E\u8BF7\u6C42\u7684\u5E16\u5B50\u4E0D\u4E00\u81F4");
+  // src/feed-detail-parser-telemetry.ts
+  var FeedDetailParserError = class extends Error {
+    constructor(message, telemetry) {
+      super(message);
+      this.telemetry = telemetry;
+      this.name = "FeedDetailParserError";
     }
-    const comments = dataRecord(unwrapState(wrapper.comments));
-    return {
-      feed_id: options.feedId,
-      xsec_token: dataText(note.xsecToken) || options.xsecToken,
-      title: dataText(note.title).slice(0, 500),
-      body: dataText(note.desc).slice(0, 2e4),
-      note_type: noteType2(note.type),
-      author,
-      metrics: parseFeedMetrics(note.interactInfo),
-      image_urls: dataList(note.imageList).map((item) => {
-        const image = dataRecord(item);
-        return dataUrl(image.urlDefault ?? image.urlPre ?? image.url);
-      }).filter((url) => url !== null).slice(0, 100),
-      published_at: dataInteger(note.time),
-      ip_location: dataText(note.ipLocation).slice(0, 200),
-      comments: dataList(unwrapState(comments.list)).slice(0, options.commentLimit).map((item) => parseComment(item, options.includeReplies, options.replyLimit)).filter((item) => item !== null),
-      comments_has_more: dataBoolean(comments.hasMore),
-      comments_cursor: dataText(comments.cursor).slice(0, 2048)
-    };
+    telemetry;
+  };
+  var ParserTelemetryBuilder = class {
+    initial_state_anchor_present;
+    initial_state_parse_result = "MISSING";
+    note_root_present = false;
+    note_detail_map_present = false;
+    note_detail_map_count = 0;
+    target_wrapper_found = false;
+    target_wrapper_match_mode = "NOT_REACHED";
+    target_note_present = false;
+    target_note_id_match = false;
+    author_object_present = false;
+    author_id_present = false;
+    image_list_present = false;
+    image_list_length = 0;
+    normalized_note_type = "NOT_REACHED";
+    last_completed_parser_boundary = "NONE";
+    parser_failure_subtype = "NONE";
+    safe_exception_class = "NONE";
+    constructor(initialStateAnchorPresent) {
+      this.initial_state_anchor_present = initialStateAnchorPresent;
+    }
+    complete(boundary) {
+      this.last_completed_parser_boundary = boundary;
+    }
+    fail(subtype, message, exception) {
+      this.parser_failure_subtype = subtype;
+      this.safe_exception_class = exception;
+      throw new FeedDetailParserError(message, this.snapshot());
+    }
+    snapshot() {
+      return {
+        initial_state_anchor_present: this.initial_state_anchor_present,
+        initial_state_parse_result: this.initial_state_parse_result,
+        note_root_present: this.note_root_present,
+        note_detail_map_present: this.note_detail_map_present,
+        note_detail_map_count: this.note_detail_map_count,
+        target_wrapper_found: this.target_wrapper_found,
+        target_wrapper_match_mode: this.target_wrapper_match_mode,
+        target_note_present: this.target_note_present,
+        target_note_id_match: this.target_note_id_match,
+        author_object_present: this.author_object_present,
+        author_id_present: this.author_id_present,
+        image_list_present: this.image_list_present,
+        image_list_length: this.image_list_length,
+        normalized_note_type: this.normalized_note_type,
+        last_completed_parser_boundary: this.last_completed_parser_boundary,
+        parser_failure_subtype: this.parser_failure_subtype,
+        safe_exception_class: this.safe_exception_class
+      };
+    }
+  };
+  function hasInitialStateAnchor(page) {
+    return [...page.scripts].some(
+      (script) => script.textContent?.trim().startsWith("window.__INITIAL_STATE__")
+    );
+  }
+  function isRecordValue(value) {
+    return Boolean(value && typeof value === "object" && !Array.isArray(value));
+  }
+  function boundedCount(value) {
+    return Math.min(Math.max(0, Math.trunc(value)), 1e3);
+  }
+  function normalizedNoteType(value) {
+    const type = typeof value === "string" ? value.toLowerCase() : "";
+    if (type === "video") return "VIDEO";
+    if (type === "normal" || type === "image") return "IMAGE";
+    return "UNKNOWN";
+  }
+  function exceptionClass(error) {
+    if (error instanceof TypeError) return "TypeError";
+    if (error instanceof SyntaxError) return "SyntaxError";
+    if (error instanceof Error) return "Error";
+    return "Unknown";
+  }
+
+  // src/feed-detail-parser.ts
+  function parseFeedDetailDocumentWithTelemetry(page, options, currentState) {
+    const telemetry = new ParserTelemetryBuilder(hasInitialStateAnchor(page));
+    try {
+      let state;
+      try {
+        state = currentState ?? latestInitialState(page);
+      } catch (error) {
+        telemetry.initial_state_parse_result = telemetry.initial_state_anchor_present ? "INVALID" : "MISSING";
+        telemetry.fail(
+          telemetry.initial_state_anchor_present ? "INITIAL_STATE_PARSE_FAILED" : "INITIAL_STATE_MISSING",
+          "\u5F53\u524D\u9875\u9762\u6CA1\u6709\u53EF\u89E3\u6790\u7684\u5C0F\u7EA2\u4E66\u72B6\u6001\u6570\u636E",
+          exceptionClass(error)
+        );
+      }
+      if (!isRecordValue(state)) {
+        telemetry.initial_state_parse_result = "UNEXPECTED_SHAPE";
+        telemetry.fail(
+          "INITIAL_STATE_PARSE_FAILED",
+          "\u5F53\u524D\u9875\u9762\u6CA1\u6709\u53EF\u89E3\u6790\u7684\u5C0F\u7EA2\u4E66\u72B6\u6001\u6570\u636E",
+          "Error"
+        );
+      }
+      const stateRecord = state;
+      telemetry.initial_state_parse_result = "PARSED";
+      telemetry.complete("INITIAL_STATE_PARSED");
+      const noteRoot = stateRecord.note;
+      const noteState = dataRecord(noteRoot);
+      telemetry.note_root_present = isRecordValue(noteRoot);
+      if (!telemetry.note_root_present) {
+        telemetry.fail("NOTE_ROOT_MISSING", "\u8BE6\u60C5\u9875\u6CA1\u6709\u8BF7\u6C42\u7684\u5E16\u5B50\u6570\u636E", "Error");
+      }
+      telemetry.complete("NOTE_ROOT_FOUND");
+      const detailMapValue = noteState.noteDetailMap;
+      const detailMap = dataRecord(detailMapValue);
+      telemetry.note_detail_map_present = isRecordValue(detailMapValue);
+      telemetry.note_detail_map_count = boundedCount(Object.keys(detailMap).length);
+      if (!telemetry.note_detail_map_present || telemetry.note_detail_map_count === 0) {
+        telemetry.fail("NOTE_DETAIL_MAP_MISSING", "\u8BE6\u60C5\u9875\u6CA1\u6709\u8BF7\u6C42\u7684\u5E16\u5B50\u6570\u636E", "Error");
+      }
+      telemetry.complete("NOTE_DETAIL_MAP_FOUND");
+      const located = findDetail(detailMap, options.feedId);
+      if (!located) {
+        telemetry.target_wrapper_match_mode = "NONE";
+        telemetry.fail("TARGET_WRAPPER_NOT_FOUND", "\u8BE6\u60C5\u9875\u6CA1\u6709\u8BF7\u6C42\u7684\u5E16\u5B50\u6570\u636E", "Error");
+      }
+      const locatedRecord = located;
+      telemetry.target_wrapper_found = true;
+      telemetry.target_wrapper_match_mode = locatedRecord.matchMode;
+      telemetry.complete("TARGET_WRAPPER_FOUND");
+      const noteValue = locatedRecord.wrapper.note;
+      const note = dataRecord(noteValue);
+      telemetry.target_note_present = isRecordValue(noteValue);
+      if (!telemetry.target_note_present) {
+        telemetry.fail("TARGET_NOTE_MISSING", "\u8BE6\u60C5\u9875\u6570\u636E\u4E0E\u8BF7\u6C42\u7684\u5E16\u5B50\u4E0D\u4E00\u81F4", "Error");
+      }
+      telemetry.complete("TARGET_NOTE_FOUND");
+      const noteId = dataText(note.noteId);
+      telemetry.target_note_id_match = noteId === options.feedId;
+      if (!telemetry.target_note_id_match) {
+        telemetry.fail("TARGET_NOTE_ID_MISMATCH", "\u8BE6\u60C5\u9875\u6570\u636E\u4E0E\u8BF7\u6C42\u7684\u5E16\u5B50\u4E0D\u4E00\u81F4", "Error");
+      }
+      telemetry.complete("TARGET_IDENTITY_MATCHED");
+      const authorValue = note.user;
+      const authorObject = dataRecord(authorValue);
+      telemetry.author_object_present = isRecordValue(authorValue);
+      if (!telemetry.author_object_present) {
+        telemetry.fail("AUTHOR_MISSING", "\u8BE6\u60C5\u9875\u6570\u636E\u4E0E\u8BF7\u6C42\u7684\u5E16\u5B50\u4E0D\u4E00\u81F4", "Error");
+      }
+      const authorId = dataText(authorObject.userId ?? authorObject.user_id);
+      telemetry.author_id_present = Boolean(authorId);
+      if (!telemetry.author_id_present) {
+        telemetry.fail("AUTHOR_ID_MISSING", "\u8BE6\u60C5\u9875\u6570\u636E\u4E0E\u8BF7\u6C42\u7684\u5E16\u5B50\u4E0D\u4E00\u81F4", "Error");
+      }
+      const author = parseFeedAuthor(authorValue);
+      if (!author) {
+        telemetry.fail("AUTHOR_MISSING", "\u8BE6\u60C5\u9875\u6570\u636E\u4E0E\u8BF7\u6C42\u7684\u5E16\u5B50\u4E0D\u4E00\u81F4", "Error");
+      }
+      const parsedAuthor = author;
+      telemetry.complete("AUTHOR_VALIDATED");
+      const imageListValue = note.imageList;
+      telemetry.image_list_present = Array.isArray(imageListValue);
+      telemetry.image_list_length = Array.isArray(imageListValue) ? boundedCount(imageListValue.length) : 0;
+      telemetry.normalized_note_type = normalizedNoteType(note.type);
+      telemetry.complete("MEDIA_FIELDS_VALIDATED");
+      const comments = dataRecord(unwrapState(locatedRecord.wrapper.comments));
+      const detail = {
+        feed_id: options.feedId,
+        xsec_token: dataText(note.xsecToken) || options.xsecToken,
+        title: dataText(note.title).slice(0, 500),
+        body: dataText(note.desc).slice(0, 2e4),
+        note_type: noteType2(note.type),
+        author: parsedAuthor,
+        metrics: parseFeedMetrics(note.interactInfo),
+        image_urls: dataList(note.imageList).map((item) => {
+          const image = dataRecord(item);
+          return dataUrl(image.urlDefault ?? image.urlPre ?? image.url);
+        }).filter((url) => url !== null).slice(0, 100),
+        published_at: dataInteger(note.time),
+        ip_location: dataText(note.ipLocation).slice(0, 200),
+        comments: dataList(unwrapState(comments.list)).slice(0, options.commentLimit).map((item) => parseComment(item, options.includeReplies, options.replyLimit)).filter((item) => item !== null),
+        comments_has_more: dataBoolean(comments.hasMore),
+        comments_cursor: dataText(comments.cursor).slice(0, 2048)
+      };
+      telemetry.parser_failure_subtype = "NONE";
+      telemetry.safe_exception_class = "NONE";
+      telemetry.complete("PARSE_COMPLETE");
+      return { detail, telemetry: telemetry.snapshot() };
+    } catch (error) {
+      if (error instanceof FeedDetailParserError) throw error;
+      return telemetry.fail(
+        "UNEXPECTED_PARSER_EXCEPTION",
+        "\u8BE6\u60C5\u9875\u89E3\u6790\u5931\u8D25",
+        exceptionClass(error)
+      );
+    }
   }
   function findDetail(detailMap, feedId) {
     const direct = dataRecord(detailMap[feedId]);
-    if (Object.keys(direct).length) return direct;
+    if (Object.keys(direct).length) return { wrapper: direct, matchMode: "EXACT_KEY" };
     const match = Object.values(detailMap).map(dataRecord).find((item) => dataText(dataRecord(item.note).noteId) === feedId);
-    if (!match) throw new Error("\u8BE6\u60C5\u9875\u6CA1\u6709\u8BF7\u6C42\u7684\u5E16\u5B50\u6570\u636E");
-    return match;
+    if (!match) return void 0;
+    return { wrapper: match, matchMode: "NOTE_ID_SCAN" };
   }
   function parseComment(value, includeReplies, replyLimit) {
     const comment = dataRecord(value);
@@ -1078,7 +1248,10 @@
         await loadComments(page, options);
         currentState = await readLiveInitialState(page);
       }
-      return success("\u5E16\u5B50\u8BE6\u60C5\u8BFB\u53D6\u5B8C\u6210", parseFeedDetailDocument(page, options, currentState));
+      return success(
+        "\u5E16\u5B50\u8BE6\u60C5\u8BFB\u53D6\u5B8C\u6210",
+        parseFeedDetailDocumentWithTelemetry(page, options, currentState).detail
+      );
     }
     if (task.kind === "get_feed_media") {
       const feedId = payloadText(task, "feed_id");

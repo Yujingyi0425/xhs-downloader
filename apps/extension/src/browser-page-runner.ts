@@ -10,7 +10,7 @@ import { waitForLoginQrCode } from "./login-qrcode";
 import { readLiveInitialState } from "./browser-state-bridge";
 import { loadComments, needsCommentLoading } from "./comment-loader";
 import { postComment, replyComment } from "./comment-runner";
-import { parseFeedDetailDocument } from "./feed-detail-parser";
+import { parseFeedDetailDocumentWithTelemetry } from "./feed-detail-parser";
 import { parseFeedMediaDocument } from "./feed-media-parser";
 import { parseFeedListDocument } from "./feed-parser";
 import { setDesiredInteraction } from "./interaction-runner";
@@ -94,7 +94,10 @@ export async function executeBrowserPageTask(
       await loadComments(page, options);
       currentState = await readLiveInitialState(page);
     }
-    return success("帖子详情读取完成", parseFeedDetailDocument(page, options, currentState));
+    return success(
+      "帖子详情读取完成",
+      parseFeedDetailDocumentWithTelemetry(page, options, currentState).detail,
+    );
   }
   if (task.kind === "get_feed_media") {
     const feedId = payloadText(task, "feed_id");
