@@ -14,7 +14,7 @@ import { classifyPageTaskError } from "./browser-task-errors";
 import { requestBrowserInteraction } from "./browser-interaction-input";
 import { CollectionCaptureController } from "./collection-controller";
 import { createCollectionPanel } from "./collection-panel";
-import { sendCollectionImport } from "./collection-import-orchestration";
+import { sendCollectionImportAndProcess } from "./collection-import-orchestration";
 import { shouldOpenCollectionPanel } from "./collection-action-routing";
 
 const collectionPanel = createCollectionPanel(
@@ -31,7 +31,7 @@ const collectionPanel = createCollectionPanel(
       } | null,
       onProgress,
     }),
-  (observation) => sendCollectionImport(observation.payload),
+  sendCollectionImportAndProcess,
 );
 
 chrome.runtime.onMessage.addListener(

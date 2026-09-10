@@ -152,4 +152,31 @@ describe("TC1C-R1 collection panel lifecycle", () => {
     expect(observations[1].requestId).toBe(firstRequestId);
     expect(root.querySelector("[data-status]")?.textContent).toBe("已保存到本地服务");
   });
+
+  it("shows image production counts and deferred video state", async () => {
+    const scan = deferred<CollectionCaptureResult>();
+    const onImport = vi.fn(async (observation: CollectionImportObservation): Promise<CollectionImportResponse> => ({
+      ok: true,
+      message: "收藏夹已保存，图片处理完成",
+      result: {
+        snapshot_id: "s", source_type: "board", board_id: "synthetic-board", board_revision: 1,
+        request_id: observation.requestId, captured_at: "2026-01-01T00:00:00Z", item_count: 1,
+        fingerprint: "f", status: "saved", diff: { added: [], removed: [], retained: [] },
+      },
+      processing: {
+        snapshot_id: "s", status: "partial",
+        items: [{ feed_id: "feed-1", source_order: 0, enrichment_status: "succeeded", media_status: "media_partial", image_count: 2, success_count: 1, failure_count: 1, video_deferred: true }],
+      },
+    }));
+    const panel = createCollectionPanel(document, () => fakeController(scan.promise, () => undefined), onImport);
+    panel.toggle();
+    const root = panel.getRootForTest();
+    click(root, "[data-start]");
+    scan.resolve(successfulResult());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(root.querySelector("[data-status]")?.textContent).toBe("已保存并完成图片处理");
+    expect(root.querySelector("[data-progress]")?.textContent).toContain("成功 1 张");
+    expect(root.querySelector("[data-progress]")?.textContent).toContain("视频 1 条待处理");
+  });
 });

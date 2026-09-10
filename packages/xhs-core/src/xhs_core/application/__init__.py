@@ -25,6 +25,11 @@ from .collection_enrichment import (
     UnknownSnapshotError,
 )
 from .collection_enrichment_jobs import CollectionEnrichmentJobCoordinator
+from .collection_image import (
+    CollectionImageBatchResult,
+    CollectionImageItemResult,
+    CollectionImageProductionService,
+)
 from .collection_import import CollectionImportService
 from .collection_media import (
     CollectionDetailDownloader,
@@ -71,6 +76,9 @@ __all__ = [
     "CollectionDetailEnrichmentService",
     "CollectionEnrichmentJobCoordinator",
     "CollectionEnrichmentSummary",
+    "CollectionImageBatchResult",
+    "CollectionImageItemResult",
+    "CollectionImageProductionService",
     "CollectionImportService",
     "CollectionMediaBatchResult",
     "CollectionMediaCoordinator",

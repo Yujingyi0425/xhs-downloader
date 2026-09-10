@@ -9,6 +9,7 @@ import {
 } from "./browser-interaction-input";
 import { handlePublicationRequest, installPublicationAutomation } from "./publication-runner";
 import { handleCollectionImportRequest } from "./collection-import-runner";
+import { handleCollectionImageProcessRequest } from "./collection-image-runner";
 import {
   isPublicationRequest,
   type PublicationRequest,
@@ -38,7 +39,12 @@ import type {
   ExtensionResponse,
   ExtensionWork,
 } from "./types";
-import type { CollectionImportResponse } from "./collection-import-types";
+import type {
+  CollectionImageProcessMessage,
+  CollectionImageProcessResponse,
+  CollectionImportMessage,
+  CollectionImportResponse,
+} from "./collection-import-types";
 
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id) void chrome.tabs.sendMessage(tab.id, { type: "toggle-panel" });
@@ -46,10 +52,10 @@ chrome.action.onClicked.addListener((tab) => {
 
 chrome.runtime.onMessage.addListener(
   (
-    request: ExtensionRequest | PublicationRequest | BrowserInteractionRequest,
+    request: ExtensionRequest | PublicationRequest | BrowserInteractionRequest | CollectionImportMessage | CollectionImageProcessMessage,
     sender,
     sendResponse: (
-      response: ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse,
+      response: ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse | CollectionImageProcessResponse,
     ) => void,
   ) => {
     void handleRequest(request, sender.tab?.id, sender.url)
@@ -65,10 +71,10 @@ chrome.runtime.onMessage.addListener(
 );
 
 async function handleRequest(
-  request: ExtensionRequest | PublicationRequest | BrowserInteractionRequest,
+  request: ExtensionRequest | PublicationRequest | BrowserInteractionRequest | CollectionImportMessage | CollectionImageProcessMessage,
   senderTabId?: number,
   senderUrl?: string,
-): Promise<ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse> {
+): Promise<ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse | CollectionImageProcessResponse> {
   if (isBrowserInteractionRequest(request)) {
     return handleBrowserInteractionRequest(request, senderTabId, senderUrl);
   }
@@ -77,6 +83,9 @@ async function handleRequest(
   }
   if (request.type === "collection-import") {
     return handleCollectionImportRequest(request, senderUrl);
+  }
+  if (request.type === "collection-image-process") {
+    return handleCollectionImageProcessRequest(request, senderUrl);
   }
   if (request.type === "set-mode") {
     await saveMode(request.mode);

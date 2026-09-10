@@ -130,8 +130,16 @@ async function submitImport(
     if (response.ok && response.result) {
       current.importState = "saved";
       start.textContent = "重新扫描";
-      status.textContent = "已保存到本地服务";
-      progress.textContent = `已保存 ${response.result.item_count} 条`;
+      if (response.processing) {
+        const processing = response.processing;
+        const deferred = processing.items.filter((item) => item.video_deferred).length;
+        const failed = processing.items.reduce((total, item) => total + item.failure_count, 0);
+        status.textContent = "已保存并完成图片处理";
+        progress.textContent = `已处理 ${processing.items.length} 条，成功 ${processing.items.reduce((total, item) => total + item.success_count, 0)} 张${failed ? `，失败 ${failed} 张` : ""}${deferred ? `，视频 ${deferred} 条待处理` : ""}`;
+      } else {
+        status.textContent = "已保存到本地服务";
+        progress.textContent = `已保存 ${response.result.item_count} 条`;
+      }
     } else if (response.kind === "network" || response.kind === "server") {
       current.importState = "retryable";
       start.textContent = "重试保存";

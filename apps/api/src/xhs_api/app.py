@@ -24,6 +24,10 @@ from .browser import create_browser_router
 from .browser_operations import create_browser_operation_router
 from .capability_reads import create_capability_read_router
 from .capability_runtime import create_browser_readiness
+from .collection_images import (
+    create_collection_image_router,
+    install_collection_image_service,
+)
 from .collections import create_collection_enrichment_router, create_collection_router
 from .error_handlers import register_exception_handlers
 from .extension import create_extension_router
@@ -88,6 +92,7 @@ def create_api(
             app.state.service = service
             app.state.tasks = tasks
             app.state.collection = CollectionService(service, dependencies.posts)
+            install_collection_image_service(app, dependencies, service)
             async with AsyncExitStack() as lifecycle:
                 lifecycle.push_async_callback(tasks.close)
                 lifecycle.push_async_callback(enrichment_jobs.close)
@@ -200,6 +205,19 @@ def create_api(
             create_collection_enrichment_router(
                 collection_enrichment,
                 enrichment_jobs,
+            )
+        )
+    collection_media_repository = getattr(
+        dependencies, "collection_media_repository", None
+    )
+    if (
+        collection_repository is not None
+        and collection_media_repository is not None
+        and collection_enrichment is not None
+    ):
+        api.include_router(
+            create_collection_image_router(
+                dependencies.publication.credentials,
             )
         )
     video_processing = getattr(dependencies, "video_processing", None)

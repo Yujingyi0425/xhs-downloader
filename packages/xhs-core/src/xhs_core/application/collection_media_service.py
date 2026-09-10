@@ -1,6 +1,7 @@
 """收藏夹媒体结果的重试、幂等和持久化编排。"""
 
 from collections.abc import Callable
+from hashlib import sha256
 
 from xhs_core.domain import (
     CollectionMediaArtifactRepository,
@@ -98,6 +99,32 @@ class CollectionMediaService:
             result = await self._coordinator.execute(item, detail, on_progress)
         await self._repository.save(_record_from_result(request_id, result))
         return result
+
+    async def read(self, request_id: str) -> CollectionMediaBatchResult | None:
+        """只读已持久化的媒体结果，不触发下载。
+
+        Args:
+            request_id: 稳定的客户端请求标识。
+
+        Returns:
+            已保存的媒体批次；不存在时返回 ``None``。
+        """
+        record = await self._repository.get(request_id)
+        return _result_from_record(record) if record is not None else None
+
+
+def collection_media_request_id(snapshot_id: str, work_id: str) -> str:
+    """从非敏感 collection/work 身份生成稳定媒体请求标识。
+
+    Args:
+        snapshot_id: 收藏快照标识。
+        work_id: 作品标识。
+
+    Returns:
+        不含 URL、token 或 Cookie 的稳定请求标识。
+    """
+    identity = f"{snapshot_id}\x00{work_id}"
+    return "tc4-media-v1-" + sha256(identity.encode()).hexdigest()
 
 
 def _validate_existing(record, request_id, item, plan) -> None:

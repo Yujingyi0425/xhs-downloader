@@ -140,6 +140,41 @@ class CollectionEnrichAcceptedResponse(BaseModel):
     job_status: str
 
 
+class CollectionImageProcessRequest(BaseModel):
+    """收藏图片生产请求；只接受非敏感的快照身份和重试标志。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    board_id: str = Field(min_length=1, max_length=256)
+    retry_failed: bool = False
+
+
+class CollectionImageItemResponse(BaseModel):
+    """单条收藏图片生产的安全状态。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    feed_id: str
+    source_order: int = Field(ge=0)
+    enrichment_status: str
+    media_status: str
+    image_count: int = Field(ge=0)
+    success_count: int = Field(ge=0)
+    failure_count: int = Field(ge=0)
+    video_deferred: bool
+    error_code: str | None = None
+
+
+class CollectionImageBatchResponse(BaseModel):
+    """收藏图片生产批次的安全响应。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: str
+    status: str
+    items: list[CollectionImageItemResponse]
+
+
 class VideoProcessRequest(BaseModel):
     """视频处理批次的本机管理参数。"""
 

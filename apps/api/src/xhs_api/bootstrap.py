@@ -17,6 +17,7 @@ from xhs_adapters.settings_repository import DotenvSettingsRepository
 from xhs_adapters.sqlite import (
     SqliteClientRecordRepository,
     SqliteCollectionEnrichmentRepository,
+    SqliteCollectionMediaArtifactRepository,
     SqliteCollectionRepository,
     SqliteCollectionVideoContentRepository,
     SqlitePostRepository,
@@ -31,6 +32,7 @@ from xhs_core.application import (
     CollectionImportService,
     VideoProcessingService,
 )
+from xhs_core.domain import CollectionMediaArtifactRepository
 from xhs_core.domain.ports import (
     ClientRecordRepository,
     PostRepository,
@@ -56,6 +58,7 @@ class ApiDependencies:
     collection_repository: SqliteCollectionRepository
     collection_import: CollectionImportService
     collection_enrichment: CollectionDetailEnrichmentService
+    collection_media_repository: CollectionMediaArtifactRepository
     video_processing: VideoProcessingService
     video_gateway: HttpxGateway
     publication: PublicationRuntime
@@ -103,6 +106,7 @@ def create_api_dependencies(
 
     collection_repository = SqliteCollectionRepository(database)
     enrichment_repository = SqliteCollectionEnrichmentRepository(database)
+    collection_media_repository = SqliteCollectionMediaArtifactRepository(database)
     collection_enrichment = CollectionDetailEnrichmentService(
         collection_repository,
         enrichment_repository,
@@ -131,6 +135,7 @@ def create_api_dependencies(
         collection_repository=collection_repository,
         collection_import=CollectionImportService(collection_repository),
         collection_enrichment=collection_enrichment,
+        collection_media_repository=collection_media_repository,
         video_processing=video_processing,
         video_gateway=video_gateway,
         publication=publication,

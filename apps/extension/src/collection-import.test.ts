@@ -71,6 +71,21 @@ describe("TC2B3 collection import contract", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps the collection request id stable across identical scans without token input", () => {
+    const first = createCollectionImportObservation(capture(2));
+    const second = createCollectionImportObservation(capture(2));
+    const reordered = createCollectionImportObservation({
+      ...capture(2),
+      items: new Map([
+        ["feed-1", { feedId: "feed-1", xsecToken: `${xsecSentinel}-1` }],
+        ["feed-0", { feedId: "feed-0", xsecToken: `${xsecSentinel}-0` }],
+      ]),
+    });
+    expect(second.requestId).toBe(first.requestId);
+    expect(reordered.requestId).not.toBe(first.requestId);
+    expect(first.requestId).not.toContain(xsecSentinel);
+  });
+
   it("sends only the frozen API contract and reuses capability headers", async () => {
     const observation = createCollectionImportObservation(capture(1));
     const fetchMock = vi.fn().mockResolvedValue(response(saved(observation.requestId, 1)));
