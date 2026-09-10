@@ -26,6 +26,7 @@ from .collection_enrichment import (
 )
 from .collection_enrichment_jobs import CollectionEnrichmentJobCoordinator
 from .collection_import import CollectionImportService
+from .collection_work_mapping import collection_feed_detail_to_work_detail
 from .download import DownloadService
 from .download_tasks import DownloadTaskCoordinator
 from .extension_account_challenges import (
@@ -60,6 +61,7 @@ __all__ = [
     "CollectionEnrichmentSummary",
     "CollectionImportService",
     "CollectionService",
+    "collection_feed_detail_to_work_detail",
     "DownloadService",
     "DownloadTaskCoordinator",
     "EphemeralSecretConflictError",
