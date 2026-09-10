@@ -26,6 +26,16 @@ from .collection_enrichment import (
 )
 from .collection_enrichment_jobs import CollectionEnrichmentJobCoordinator
 from .collection_import import CollectionImportService
+from .collection_media import (
+    CollectionDetailDownloader,
+    CollectionMediaBatchResult,
+    CollectionMediaCoordinator,
+    CollectionMediaItemResult,
+    CollectionMediaPlan,
+    CollectionMediaStatus,
+    CollectionMediaTask,
+    DeferredCollectionMedia,
+)
 from .collection_work_mapping import collection_feed_detail_to_work_detail
 from .download import DownloadService
 from .download_tasks import DownloadTaskCoordinator
@@ -55,13 +65,20 @@ __all__ = [
     "BrowserTaskEphemeralInputChannel",
     "BrowserTaskService",
     "CapabilityRouter",
+    "CollectionDetailDownloader",
     "CollectionDetailEnrichmentOptions",
     "CollectionDetailEnrichmentService",
     "CollectionEnrichmentJobCoordinator",
     "CollectionEnrichmentSummary",
     "CollectionImportService",
+    "CollectionMediaBatchResult",
+    "CollectionMediaCoordinator",
+    "CollectionMediaItemResult",
+    "CollectionMediaPlan",
+    "CollectionMediaStatus",
+    "CollectionMediaTask",
     "CollectionService",
-    "collection_feed_detail_to_work_detail",
+    "DeferredCollectionMedia",
     "DownloadService",
     "DownloadTaskCoordinator",
     "EphemeralSecretConflictError",
@@ -79,4 +96,5 @@ __all__ = [
     "PublicationTaskService",
     "UnknownSnapshotError",
     "VideoProcessingService",
+    "collection_feed_detail_to_work_detail",
 ]

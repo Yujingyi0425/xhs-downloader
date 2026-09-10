@@ -11,6 +11,7 @@ from loguru import logger
 
 from xhs_core.domain.links import extract_supported_links, is_short_link
 from xhs_core.domain.models import (
+    DownloadArtifact,
     DownloadOutcome,
     DownloadProgress,
     DownloadRecord,
@@ -87,6 +88,28 @@ class DownloadService:
             detail.author.nickname = mapped_name
         logger.info("作品页面解析完成")
         return detail
+
+    async def download_detail(
+        self,
+        detail: WorkDetail,
+        indexes: set[int],
+        on_progress: Callable[[DownloadProgress], None] | None = None,
+    ) -> list[DownloadArtifact]:
+        """下载调用方已经解析并校验的作品详情。
+
+        Args:
+            detail: 已完成身份校验的作品详情。
+            indexes: 需要下载的一基媒体序号。
+            on_progress: 可选进度回调。
+
+        Returns:
+            现有文件下载器生成的完整 artifact 列表。
+
+        Note:
+            该入口不重新请求详情页，也不写入普通帖子下载记录；收藏夹
+            orchestration 负责其自身的条目关联与后续状态语义。
+        """
+        return await self._downloader.download(detail, indexes, on_progress)
 
     async def download(
         self,
