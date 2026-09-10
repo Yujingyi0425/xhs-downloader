@@ -17,6 +17,10 @@ from .browser_diagnostics import (
     sanitize_stored_browser_task,
 )
 from .browser_ports import BrowserTaskExecutor
+from .browser_runtime_telemetry import (
+    mark_browser_runtime_telemetry_submitted,
+    sanitize_browser_runtime_telemetry,
+)
 from .browser_sessions import BrowserCookieDeletionResult, LoginQrCodeResult
 from .browser_tasks import (
     EPHEMERAL_XSEC_READ_KINDS,
@@ -273,8 +277,10 @@ __all__ = [
     "build_extension_identity",
     "can_retry_browser_task",
     "collection_fingerprint",
+    "mark_browser_runtime_telemetry_submitted",
     "overall_video_status",
     "sanitize_browser_page_diagnostics",
+    "sanitize_browser_runtime_telemetry",
     "sanitize_browser_task_message",
     "sanitize_browser_task_result",
     "sanitize_stored_browser_task",

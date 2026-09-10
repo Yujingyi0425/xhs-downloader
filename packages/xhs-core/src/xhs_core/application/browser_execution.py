@@ -17,6 +17,7 @@ from xhs_core.domain import (
     BrowserTaskLeaseConflictError,
     BrowserTaskStatus,
     browser_task_may_write_platform,
+    mark_browser_runtime_telemetry_submitted,
     sanitize_browser_page_diagnostics,
     sanitize_browser_task_message,
     sanitize_browser_task_result,
@@ -135,6 +136,10 @@ class BrowserExecutionService:
         if status is BrowserTaskStatus.SUCCEEDED and result is None:
             raise BrowserTaskError("成功任务必须返回结构化结果")
         normalized_result = _normalize_terminal_result(task, status, result)
+        if status in {BrowserTaskStatus.FAILED, BrowserTaskStatus.NEEDS_REVIEW}:
+            normalized_result = mark_browser_runtime_telemetry_submitted(
+                normalized_result
+            )
         transient_result = None
         persisted_result = normalized_result
         if status is BrowserTaskStatus.SUCCEEDED and normalized_result is not None:

@@ -6,6 +6,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from pydantic import JsonValue
 
 from .browser_parser_telemetry import sanitize_parser_telemetry
+from .browser_runtime_telemetry import sanitize_browser_runtime_telemetry
 from .browser_tasks import BrowserTask, BrowserTaskStatus
 
 _MAX_ADAPTER_VERSION_LENGTH = 32
@@ -124,6 +125,11 @@ def sanitize_browser_page_diagnostics(
     parser_telemetry = sanitize_parser_telemetry(value.get("parser_telemetry"))
     if parser_telemetry is not None:
         diagnostics["parser_telemetry"] = parser_telemetry
+    runtime_telemetry = sanitize_browser_runtime_telemetry(
+        value.get("browser_runtime_telemetry")
+    )
+    if runtime_telemetry is not None:
+        diagnostics["browser_runtime_telemetry"] = runtime_telemetry
     for field in (
         "target_tab_exists",
         "url_host_is_xhs",

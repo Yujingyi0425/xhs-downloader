@@ -17,6 +17,10 @@ import { setDesiredInteraction } from "./interaction-runner";
 import { parseUserProfileDocument } from "./profile-parser";
 import { applySearchFilters, hasCustomSearchFilters } from "./search-filters";
 import { buildPageCompatibilityDiagnostics } from "./browser-page-diagnostics";
+import {
+  attachPageRuntimeTelemetry,
+  type PageRuntimeTelemetry,
+} from "./browser-runtime-telemetry";
 
 const SEARCH_READY_ATTEMPTS = 20;
 const SEARCH_READY_INTERVAL_MS = 250;
@@ -39,6 +43,7 @@ export interface BrowserPageTaskResponse {
   result?: Record<string, JsonValue>;
   navigateUrl?: string;
   status?: "succeeded" | "failed" | "needs_review";
+  page_runtime_telemetry?: PageRuntimeTelemetry;
 }
 
 /** 判断消息是否为内容脚本浏览器任务。 */
@@ -94,10 +99,23 @@ export async function executeBrowserPageTask(
       await loadComments(page, options);
       currentState = await readLiveInitialState(page);
     }
-    return success(
-      "帖子详情读取完成",
-      parseFeedDetailDocumentWithTelemetry(page, options, currentState).detail,
-    );
+    const pageTelemetry: PageRuntimeTelemetry = {
+      content_script_message_received: false,
+      page_task_started: true,
+      parser_invocation_started: true,
+    };
+    try {
+      return {
+        ...success(
+          "帖子详情读取完成",
+          parseFeedDetailDocumentWithTelemetry(page, options, currentState).detail,
+        ),
+        page_runtime_telemetry: pageTelemetry,
+      };
+    } catch (error) {
+      attachPageRuntimeTelemetry(error, pageTelemetry);
+      throw error;
+    }
   }
   if (task.kind === "get_feed_media") {
     const feedId = payloadText(task, "feed_id");

@@ -17,6 +17,7 @@ import { createCollectionPanel } from "./collection-panel";
 import { sendCollectionImportAndProcess } from "./collection-import-orchestration";
 import { shouldOpenCollectionPanel } from "./collection-action-routing";
 import { parserTelemetryFromError } from "./feed-detail-parser";
+import { pageRuntimeTelemetryFromError, type PageRuntimeTelemetry } from "./browser-runtime-telemetry";
 
 const collectionPanel = createCollectionPanel(
   document,
@@ -55,10 +56,18 @@ chrome.runtime.onMessage.addListener(
     void executeBrowserPageTask(message.task, document, location.href, {
       activateInteraction: requestBrowserInteraction,
     })
-      .then(sendResponse)
+      .then((response) =>
+        sendResponse({
+          ...response,
+          page_runtime_telemetry: pageRuntimeTelemetry(
+            response.page_runtime_telemetry,
+          ),
+        }),
+      )
       .catch((error: unknown) => {
         const failureCode = classifyPageTaskError(message.task.kind, error);
         const parserTelemetry = parserTelemetryFromError(error);
+        const pageTelemetry = pageRuntimeTelemetry(pageRuntimeTelemetryFromError(error));
         sendResponse({
           ok: false,
           message:
@@ -74,8 +83,19 @@ chrome.runtime.onMessage.addListener(
             failure_stage: "page_parser",
             ...(parserTelemetry ? { parser_telemetry: parserTelemetry } : {}),
           },
+          page_runtime_telemetry: pageTelemetry,
         });
       });
     return true;
   },
 );
+
+function pageRuntimeTelemetry(
+  observed?: PageRuntimeTelemetry,
+): PageRuntimeTelemetry {
+  return {
+    content_script_message_received: true,
+    page_task_started: true,
+    parser_invocation_started: observed?.parser_invocation_started ?? false,
+  };
+}

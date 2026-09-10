@@ -1,17 +1,27 @@
-import type { BrowserTaskClaim } from "@xhs-downloader/contracts";
+import type { BrowserTaskClaim, JsonValue } from "@xhs-downloader/contracts";
 
 import type { BrowserPageTaskResponse } from "./browser-page-runner";
+import {
+  BrowserRuntimeTelemetryBuilder,
+  withBrowserRuntimeTelemetry,
+} from "./browser-runtime-telemetry";
 import { heartbeatIntervalMilliseconds, startBrowserTaskHeartbeat } from "./browser-task-heartbeat";
 import {
   BrowserTaskLeaseLostError,
   reportBrowserTaskResult,
   reportBrowserTaskRunning,
 } from "./browser-task-service";
+import { BrowserTaskExecutionError } from "./browser-task-errors";
 import type { ExtensionCredential } from "./publication-types";
 
 type CredentialOperation = <T>(
   operation: (credential: ExtensionCredential) => Promise<T>,
 ) => Promise<T>;
+
+type ExecuteBrowserTask = (
+  assertLeaseActive: () => void,
+  telemetry: BrowserRuntimeTelemetryBuilder,
+) => Promise<BrowserPageTaskResponse>;
 
 /**
  * 在单次页面动作外维护任务租约并回传终态。
@@ -22,11 +32,12 @@ type CredentialOperation = <T>(
 export async function executeBrowserTaskClaim(
   baseUrl: string,
   claim: BrowserTaskClaim,
-  execute: (assertLeaseActive: () => void) => Promise<BrowserPageTaskResponse>,
+  execute: ExecuteBrowserTask,
   withCredential: CredentialOperation,
 ): Promise<void> {
   const taskId = claim.task.task_id;
   const leaseToken = claim.lease_token;
+  const telemetry = new BrowserRuntimeTelemetryBuilder();
   await withLeaseRequestTimeout(claim, (signal) =>
     withCredential((credential) =>
       reportBrowserTaskRunning(baseUrl, credential, taskId, leaseToken, signal),
@@ -39,7 +50,7 @@ export async function executeBrowserTaskClaim(
   );
   let response: BrowserPageTaskResponse;
   try {
-    response = await execute(heartbeat.assertActive);
+    response = await execute(heartbeat.assertActive, telemetry);
   } catch (error) {
     const leaseFailure = await heartbeat.stop();
     if (leaseFailure !== undefined) {
@@ -47,12 +58,14 @@ export async function executeBrowserTaskClaim(
       return;
     }
     const message = error instanceof Error ? error.message : "浏览器任务执行失败";
-    await reportResultWithTimeout(
+    telemetry.markExtensionResultBuilt();
+    await submitFailure(
       baseUrl,
       claim,
       isWriteTask(claim) ? "needs_review" : "failed",
       message,
-      undefined,
+      failureResult(error, telemetry),
+      telemetry,
       withCredential,
     );
     return;
@@ -62,13 +75,71 @@ export async function executeBrowserTaskClaim(
     await settleAfterLeaseFailure(baseUrl, claim, leaseFailure, withCredential);
     return;
   }
-  await reportResultWithTimeout(
+  const status = response.status ?? (response.ok ? "succeeded" : "failed");
+  if (status === "succeeded" && response.ok) {
+    await reportResultWithTimeout(
+      baseUrl,
+      claim,
+      status,
+      response.message,
+      response.result,
+      withCredential,
+    );
+    return;
+  }
+  telemetry.absorbPageRuntimeTelemetry(response.page_runtime_telemetry);
+  telemetry.markExtensionResultBuilt();
+  const failureStatus = status === "needs_review" ? "needs_review" : "failed";
+  await submitFailure(
     baseUrl,
     claim,
-    response.status ?? (response.ok ? "succeeded" : "failed"),
+    failureStatus,
     response.message,
-    response.result,
+    withBrowserRuntimeTelemetry(response.result, telemetry.snapshot()),
+    telemetry,
     withCredential,
+  );
+}
+
+async function submitFailure(
+  baseUrl: string,
+  claim: BrowserTaskClaim,
+  status: "failed" | "needs_review",
+  message: string,
+  result: Record<string, JsonValue>,
+  telemetry: BrowserRuntimeTelemetryBuilder,
+  withCredential: CredentialOperation,
+): Promise<void> {
+  telemetry.markResultSubmitAttempted();
+  try {
+    await reportResultWithTimeout(
+      baseUrl,
+      claim,
+      status,
+      message,
+      withBrowserRuntimeTelemetry(result, telemetry.snapshot()),
+      withCredential,
+    );
+    telemetry.markResultSubmitResolved();
+  } catch (error) {
+    telemetry.markResultSubmitRejected();
+    throw error;
+  }
+}
+
+function failureResult(
+  error: unknown,
+  telemetry: BrowserRuntimeTelemetryBuilder,
+): Record<string, JsonValue> {
+  return withBrowserRuntimeTelemetry(
+    {
+      failure_stage: "background",
+      failure_code:
+        error instanceof BrowserTaskExecutionError
+          ? error.code
+          : "PAGE_TASK_ERROR",
+    },
+    telemetry.snapshot(),
   );
 }
 

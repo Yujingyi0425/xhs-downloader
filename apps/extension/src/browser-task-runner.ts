@@ -18,6 +18,10 @@ import {
   BrowserTaskExecutionError,
   classifyMessageDispatchError,
 } from "./browser-task-errors";
+import {
+  BrowserRuntimeTelemetryBuilder,
+  classifySendMessageFailure,
+} from "./browser-runtime-telemetry";
 import { clearExtensionCredential, ensureExtensionCredential } from "./extension-credential";
 import type { ExtensionCredential } from "./publication-types";
 import { loadSettings } from "./storage";
@@ -77,7 +81,7 @@ async function executeClaim(baseUrl: string, claim: BrowserTaskClaim): Promise<v
   await executeBrowserTaskClaim(
     baseUrl,
     claim,
-    (assertLeaseActive) => executeInXhsTab(claim, assertLeaseActive),
+    (assertLeaseActive, telemetry) => executeInXhsTab(claim, assertLeaseActive, telemetry),
     withCredential,
   );
 }
@@ -85,6 +89,7 @@ async function executeClaim(baseUrl: string, claim: BrowserTaskClaim): Promise<v
 async function executeInXhsTab(
   claim: BrowserTaskClaim,
   assertLeaseActive: () => void,
+  telemetry: BrowserRuntimeTelemetryBuilder,
 ): Promise<BrowserPageTaskResponse> {
   assertLeaseActive();
   const sessionResponse = await executeBrowserSessionTask(claim.task);
@@ -112,12 +117,13 @@ async function executeInXhsTab(
       }
     }
   }
-  return executeInNewTab(request, assertLeaseActive);
+  return executeInNewTab(request, assertLeaseActive, telemetry);
 }
 
 async function executeInNewTab(
   request: BrowserPageTaskRequest,
   assertLeaseActive: () => void,
+  telemetry: BrowserRuntimeTelemetryBuilder,
 ): Promise<BrowserPageTaskResponse> {
   let tab: chrome.tabs.Tab | undefined;
   let revokeInteraction = (): void => undefined;
@@ -130,6 +136,7 @@ async function executeInNewTab(
       active: request.task.kind === "get_login_qrcode",
     });
     assertLeaseActive();
+    telemetry.markTargetTabCreated();
     if (tab.id === undefined)
       throw new BrowserTaskExecutionError("TARGET_TAB_NOT_FOUND", "目标标签页未创建");
     revokeInteraction = authorizeBrowserTaskInteraction(
@@ -138,11 +145,18 @@ async function executeInNewTab(
       request.task.kind,
     );
     if (request.task.kind === "get_feed_detail") {
-      await waitForDetailEnrichmentPage(
-        tab.id,
-        taskPayloadText(request.task.payload, "feed_id"),
-        assertLeaseActive,
-      );
+      telemetry.markDetailWaitStarted();
+      try {
+        await waitForDetailEnrichmentPage(
+          tab.id,
+          taskPayloadText(request.task.payload, "feed_id"),
+          assertLeaseActive,
+        );
+        telemetry.markDetailWaitResult("PASS");
+      } catch (error) {
+        telemetry.markDetailWaitResult("FAIL");
+        throw error;
+      }
     }
     if (request.task.kind === "get_feed_media") {
       await waitForMediaDetailPage(tab.id, request, assertLeaseActive, {
@@ -151,7 +165,8 @@ async function executeInNewTab(
         chrome_runtime_last_error_present: false,
       });
     }
-    let response = await sendWhenReady(tab.id, request, assertLeaseActive);
+    let response = await sendWhenReady(tab.id, request, assertLeaseActive, telemetry);
+    telemetry.absorbPageRuntimeTelemetry(response.page_runtime_telemetry);
     for (
       let navigationCount = 0;
       response.navigateUrl && navigationCount < 2;
@@ -161,7 +176,8 @@ async function executeInNewTab(
       const navigateUrl = safeXhsUrl(response.navigateUrl);
       await chrome.tabs.update(tab.id, { url: navigateUrl });
       await delay(1_000);
-      response = await sendWhenReady(tab.id, request, assertLeaseActive);
+      response = await sendWhenReady(tab.id, request, assertLeaseActive, telemetry);
+      telemetry.absorbPageRuntimeTelemetry(response.page_runtime_telemetry);
     }
     if (response.navigateUrl) {
       throw new Error("小红书站内页面重复要求导航");
@@ -199,27 +215,35 @@ async function sendWhenReady(
   tabId: number,
   request: BrowserPageTaskRequest,
   assertLeaseActive: () => void,
+  telemetry: BrowserRuntimeTelemetryBuilder,
 ): Promise<BrowserPageTaskResponse> {
   let lastError: unknown;
   for (let attempt = 0; attempt < PAGE_READY_ATTEMPTS; attempt += 1) {
     try {
       assertLeaseActive();
+      telemetry.markSendMessageAttempted();
       const response = await chrome.tabs.sendMessage<
         BrowserPageTaskRequest,
         BrowserPageTaskResponse
       >(tabId, request);
       assertLeaseActive();
+      telemetry.markSendMessageResolved();
+      telemetry.markContentScriptResponseReceived();
       if (!response || typeof response !== "object" || typeof response.ok !== "boolean") {
+        telemetry.markPageResponse("INVALID_RESPONSE");
         throw new BrowserTaskExecutionError("MESSAGE_RESPONSE_EMPTY", "内容脚本返回了空响应");
       }
+      telemetry.markPageResponse(response.ok ? "SUCCESS" : "PAGE_TASK_ERROR");
       return response;
     } catch (error) {
       if (error instanceof BrowserTaskExecutionError) throw error;
+      telemetry.markSendMessageRejected(classifySendMessageFailure(error));
       lastError = error;
       await delay(250);
     }
   }
   const code = classifyMessageDispatchError(lastError);
+  telemetry.markSendMessageRejected(classifySendMessageFailure(lastError));
   throw new BrowserTaskExecutionError(code, "内容脚本未能在有界时间内响应");
 }
 
