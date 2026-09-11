@@ -5,7 +5,7 @@ from importlib.resources import files
 
 from xhs_core.domain import ManagedBrowserError
 
-_ASSET_NAME = "managed_page_adapter.js"
+_ASSET_NAME = "managed_page_adapter_v2.js"
 
 
 @lru_cache(maxsize=1)

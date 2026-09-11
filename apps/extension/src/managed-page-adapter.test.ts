@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  MANAGED_ADAPTER_GENERATION,
+  MANAGED_DIAGNOSTIC_SCHEMA_VERSION,
   MANAGED_PAGE_ADAPTER_GLOBAL,
   MANAGED_PAGE_ADAPTER_VERSION,
   installManagedPageAdapter,
@@ -27,6 +29,7 @@ describe("受管浏览器页面适配器", () => {
 
     expect(MANAGED_PAGE_ADAPTER_GLOBAL).toBe("__XHS_DOWNLOADER_MANAGED_PAGE_ADAPTER__");
     expect(installed?.version).toBe(MANAGED_PAGE_ADAPTER_VERSION);
+    expect(installed?.generation).toBe(MANAGED_ADAPTER_GENERATION);
     expect(installManagedPageAdapter(scope)).toBe(installed);
     expect(typeof installed?.proveAccount).toBe("function");
     expect(typeof installed?.execute).toBe("function");
@@ -49,11 +52,35 @@ describe("受管浏览器页面适配器", () => {
 
     expect(response).toMatchObject({
       ok: true,
+      managed_runtime_identity: {
+        managed_adapter_generation: MANAGED_ADAPTER_GENERATION,
+        diagnostic_schema_version: MANAGED_DIAGNOSTIC_SCHEMA_VERSION,
+      },
       result: {
         source: "search",
         items: [{ feed_id: "synthetic-feed" }],
       },
     });
+  });
+
+  it("不会复用旧代适配器并保持单一活动入口", () => {
+    const scope = window as AdapterWindow;
+    const legacy = {
+      version: MANAGED_PAGE_ADAPTER_VERSION,
+      generation: "v1",
+    } as unknown as ManagedPageAdapter;
+    Object.defineProperty(scope, MANAGED_PAGE_ADAPTER_GLOBAL, {
+      configurable: true,
+      value: legacy,
+      writable: true,
+    });
+
+    const installed = installManagedPageAdapter(scope);
+
+    expect(installed).not.toBe(legacy);
+    expect(installed.generation).toBe(MANAGED_ADAPTER_GENERATION);
+    expect(installManagedPageAdapter(scope)).toBe(installed);
+    expect(scope[MANAGED_PAGE_ADAPTER_GLOBAL]).toBe(installed);
   });
 
   it("返回脱敏诊断并将执行异常转换为结构化失败", async () => {

@@ -21,6 +21,13 @@ export const MANAGED_PAGE_ADAPTER_GLOBAL = "__XHS_DOWNLOADER_MANAGED_PAGE_ADAPTE
 
 /** 受管浏览器页面适配器协议版本。 */
 export const MANAGED_PAGE_ADAPTER_VERSION = "3";
+export const MANAGED_ADAPTER_GENERATION = "v2" as const;
+export const MANAGED_DIAGNOSTIC_SCHEMA_VERSION = "MANAGED-2" as const;
+
+const MANAGED_RUNTIME_IDENTITY = {
+  managed_adapter_generation: MANAGED_ADAPTER_GENERATION,
+  diagnostic_schema_version: MANAGED_DIAGNOSTIC_SCHEMA_VERSION,
+} as const;
 
 /** 受管浏览器完成互动所需的同页可信输入。 */
 interface ManagedInteractionAction {
@@ -39,6 +46,7 @@ interface ManagedInteractionPreparationResponse extends BrowserPageTaskResponse 
 /** 受管浏览器通过 CDP 调用的页面能力入口。 */
 export interface ManagedPageAdapter {
   version: string;
+  generation: typeof MANAGED_ADAPTER_GENERATION;
   proveAccount(challenge: BrowserAccountChallenge): Promise<BrowserAccountProof>;
   execute(task: BrowserTask): Promise<BrowserPageTaskResponse>;
   prepareInteraction(task: BrowserTask): Promise<ManagedInteractionPreparationResponse>;
@@ -55,16 +63,25 @@ export function installManagedPageAdapter(
   scope: AdapterScope = window as AdapterScope,
 ): ManagedPageAdapter {
   const current = scope.__XHS_DOWNLOADER_MANAGED_PAGE_ADAPTER__;
-  if (current?.version === MANAGED_PAGE_ADAPTER_VERSION) return current;
+  if (
+    current?.version === MANAGED_PAGE_ADAPTER_VERSION &&
+    current.generation === MANAGED_ADAPTER_GENERATION
+  ) {
+    return current;
+  }
 
   installBrowserStateBridge(scope);
   const adapter: ManagedPageAdapter = {
     version: MANAGED_PAGE_ADAPTER_VERSION,
+    generation: MANAGED_ADAPTER_GENERATION,
     proveAccount: (challenge) => proveBrowserAccount(scope.document, challenge),
     execute: (task) => executeSafely(task, scope),
     prepareInteraction: (task) => prepareInteractionSafely(task, scope),
     verifyInteraction: (task) => verifyInteractionSafely(task, scope),
-    diagnostics: () => buildPageCompatibilityDiagnostics(scope.document, scope.location.href),
+    diagnostics: () => ({
+      ...MANAGED_RUNTIME_IDENTITY,
+      ...buildPageCompatibilityDiagnostics(scope.document, scope.location.href),
+    }),
   };
   Object.defineProperty(scope, MANAGED_PAGE_ADAPTER_GLOBAL, {
     configurable: true,
@@ -83,7 +100,10 @@ async function executeSafely(
     return failure(new Error("受管浏览器互动必须通过可信输入流程执行"), scope);
   }
   try {
-    return await executeBrowserPageTask(task, scope.document, scope.location.href);
+    return {
+      ...(await executeBrowserPageTask(task, scope.document, scope.location.href)),
+      managed_runtime_identity: MANAGED_RUNTIME_IDENTITY,
+    };
   } catch (error) {
     return failure(error, scope);
   }
@@ -179,6 +199,7 @@ function failure(error: unknown, scope: AdapterScope): BrowserPageTaskResponse {
     message: error instanceof Error ? error.message : "页面数据解析失败",
     status: error instanceof UncertainBrowserActionError ? "needs_review" : "failed",
     result: {
+      ...MANAGED_RUNTIME_IDENTITY,
       ...buildPageCompatibilityDiagnostics(scope.document, scope.location.href),
       ...(mediaParserDiagnostics
         ? { media_parser_diagnostics: mediaParserDiagnostics }

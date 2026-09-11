@@ -27,6 +27,8 @@ def parse_managed_page_response(
         if isinstance(message, str) and message
         else "受管浏览器任务执行完成"
     )
+    if _is_v2_identity(value.get("managed_runtime_identity")):
+        safe_message = f"{safe_message[:960]} [managed_adapter_generation=v2]"
     raw_status = value.get("status")
     if raw_status == BrowserTaskStatus.NEEDS_REVIEW.value:
         status = BrowserTaskStatus.NEEDS_REVIEW
@@ -40,6 +42,14 @@ def parse_managed_page_response(
         message=safe_message,
         result=result if isinstance(result, dict) else None,
     )
+
+
+def _is_v2_identity(value: Any) -> bool:
+    """只接受受管 v2 的固定身份字段。"""
+    return value == {
+        "managed_adapter_generation": "v2",
+        "diagnostic_schema_version": "MANAGED-2",
+    }
 
 
 def should_keep_login_page(

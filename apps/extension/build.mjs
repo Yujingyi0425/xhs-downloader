@@ -40,7 +40,7 @@ await build({
 await cp(resolve(appDirectory, "manifest.json"), resolve(output, "manifest.json"));
 await cp(
   resolve(output, "managed-page-adapter.js"),
-  resolve(browserAssets, "managed_page_adapter.js"),
+  resolve(browserAssets, "managed_page_adapter_v2.js"),
 );
 await cp(
   resolve(output, "managed-publisher-adapter.js"),

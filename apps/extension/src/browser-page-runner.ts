@@ -44,6 +44,7 @@ export interface BrowserPageTaskResponse {
   navigateUrl?: string;
   status?: "succeeded" | "failed" | "needs_review";
   page_runtime_telemetry?: PageRuntimeTelemetry;
+  managed_runtime_identity?: Record<string, JsonValue>;
 }
 
 /** 判断消息是否为内容脚本浏览器任务。 */

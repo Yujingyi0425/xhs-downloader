@@ -49,12 +49,10 @@ beforeEach(() => {
     },
   });
 });
-
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-
 function serviceResponses(taskClaim: ReturnType<typeof claim>) {
   return vi
     .fn()
@@ -65,7 +63,6 @@ function serviceResponses(taskClaim: ReturnType<typeof claim>) {
     .mockResolvedValueOnce(new Response(JSON.stringify({ status: "running" })))
     .mockResolvedValueOnce(new Response(JSON.stringify({ status: "succeeded" })));
 }
-
 describe("GET_FEED_MEDIA 后台执行边界", () => {
   it("从 feed_id 打开详情页，确认 identity 后再发送消息", async () => {
     const fetchMock = serviceResponses(
@@ -75,7 +72,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-
     await runBrowserTaskPoll();
 
     expect(createdUrl).toBe(
@@ -94,7 +90,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       "elapsed_ms",
     );
   });
-
   it("非详情页持续 loading 时保留有界导航诊断", async () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({
       id: 8,
@@ -108,7 +103,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-
     await runBrowserTaskPoll();
 
     const response = JSON.parse(fetchMock.mock.calls[3][1].body);
@@ -129,7 +123,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
     expect(response.result).not.toHaveProperty("navigation_creation");
     expect(response.result).not.toHaveProperty("created_tab_id");
   }, 10_000);
-
   it("预期详情 pendingUrl 在旧超时后提交时获得有限 grace", async () => {
     const expectedUrl =
       "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token";
@@ -153,7 +146,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-
     await runBrowserTaskPoll();
 
     expect(reads).toBe(25);
@@ -162,7 +154,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       result: { note_type: "video" },
     });
   }, 12_000);
-
   it("pendingUrl 缺失时不获得 grace", async () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({
       id: 8,
@@ -176,7 +167,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-
     await runBrowserTaskPoll();
 
     expect(JSON.parse(fetchMock.mock.calls[3][1].body as string)).toMatchObject({
@@ -184,7 +174,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       result: { failure_code: "DETAIL_NAVIGATION_FAILED" },
     });
   }, 10_000);
-
   it("目标详情 URL 已匹配时允许 loading 页面进入页面执行器", async () => {
     const expectedUrl =
       "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token";
@@ -200,7 +189,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-
     await runBrowserTaskPoll();
 
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
@@ -208,7 +196,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       result: { note_type: "video" },
     });
   }, 10_000);
-
   it("预期 pendingUrl 永不提交时在新上限失败", async () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({
       id: 8,
@@ -224,7 +211,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       }),
     );
     vi.stubGlobal("fetch", fetchMock);
-
     await runBrowserTaskPoll();
 
     const finalResponse = JSON.parse(
@@ -235,7 +221,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       result: { failure_code: "DETAIL_NAVIGATION_FAILED" },
     });
   }, 12_000);
-
   it("目标标签消失时保留 missing 诊断", async () => {
     vi.mocked(chrome.tabs.get).mockRejectedValue(new Error("tab removed"));
     const fetchMock = serviceResponses(
@@ -262,7 +247,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       },
     });
   });
-
   it("content script 未就绪时返回明确 failure code", async () => {
     vi.mocked(chrome.tabs.sendMessage).mockRejectedValue(
       new Error("Could not establish connection. Receiving end does not exist."),
@@ -282,7 +266,6 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
       result: { failure_code: "CONTENT_SCRIPT_NOT_READY", failure_stage: "background" },
     });
   }, 10_000);
-
   it("board context identity 不匹配时不发送 media 消息", async () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({
       id: 8,
