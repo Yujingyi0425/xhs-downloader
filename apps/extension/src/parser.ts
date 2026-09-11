@@ -52,7 +52,10 @@ export function parseInitialStateValue(script: string): Record<string, unknown> 
   const raw = script
     .slice(separator + 1)
     .trim()
-    .replace(/;$/, "");
+    .replace(/;$/, "")
+    // 小红书页面会把不参与帖子解析的空 Map 序列化为 JS 构造式；
+    // 将这个无副作用的空容器归一化为 JSON 对象，不执行页面代码。
+    .replace(/\bnew\s+Map\s*\(\s*\[\s*\]\s*\)/g, "{}");
   let state: DataMap;
   try {
     state = JSON.parse(normalizeJavaScriptValue(raw)) as DataMap;

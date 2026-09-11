@@ -93,6 +93,24 @@ describe("帖子页面解析", () => {
     expect(work.description).toContain("undefined");
   });
 
+  it("兼容页面状态尾部的空 Map 构造式", () => {
+    const note = {
+      noteId: WORK_ID,
+      type: "normal",
+      user: { userId: "synthetic-author" },
+      imageList: [{ url: "https://sns-img-bd.xhscdn.com/synthetic.jpeg" }],
+    };
+
+    const raw = JSON.stringify({ note: { noteDetailMap: { [WORK_ID]: { note } } } });
+    const work = parseInitialStateScript(
+      `window.__INITIAL_STATE__=${raw.slice(0, -1)},"extra":new Map([])};`,
+      SOURCE_URL,
+    );
+
+    expect(work.workId).toBe(WORK_ID);
+    expect(work.media[0]?.kind).toBe("image");
+  });
+
   it("解析视频备用流和封面", () => {
     const note = {
       noteId: WORK_ID,

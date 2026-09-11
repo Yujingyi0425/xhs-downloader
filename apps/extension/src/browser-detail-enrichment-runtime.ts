@@ -1,10 +1,10 @@
 import { BrowserTaskExecutionError, isSupportedDetailPageForFeed } from "./browser-task-errors";
 
-const DETAIL_PAGE_READY_BASE_TIMEOUT_MS = 5_000;
-const DETAIL_PAGE_READY_MAX_TIMEOUT_MS = 10_000;
+const DETAIL_PAGE_READY_MAX_TIMEOUT_MS = 15_000;
 const DETAIL_PAGE_READY_INTERVAL_MS = 250;
 const DETAIL_PAGE_READY_MAX_ATTEMPTS =
   DETAIL_PAGE_READY_MAX_TIMEOUT_MS / DETAIL_PAGE_READY_INTERVAL_MS;
+const DETAIL_PAGE_URL_STABLE_ATTEMPTS = 4;
 
 /** 在详情 enrichment 解析前等待有界、身份匹配的详情页状态。 */
 export async function waitForDetailEnrichmentPage(
@@ -12,7 +12,6 @@ export async function waitForDetailEnrichmentPage(
   feedId: string,
   assertLeaseActive: () => void,
 ): Promise<void> {
-  const startedAt = Date.now();
   for (let attempt = 0; attempt < DETAIL_PAGE_READY_MAX_ATTEMPTS; attempt += 1) {
     assertLeaseActive();
     let tab: chrome.tabs.Tab;
@@ -37,13 +36,10 @@ export async function waitForDetailEnrichmentPage(
       return;
     }
     if (
-      Date.now() - startedAt >= DETAIL_PAGE_READY_BASE_TIMEOUT_MS &&
-      !hasExpectedPendingDetail(tab, feedId)
+      attempt >= DETAIL_PAGE_URL_STABLE_ATTEMPTS &&
+      hasExpectedDetailUrl(tab, feedId)
     ) {
-      throw new BrowserTaskExecutionError(
-        "DETAIL_NAVIGATION_FAILED",
-        "详情页未在有界时间内就绪",
-      );
+      return;
     }
     await delay(DETAIL_PAGE_READY_INTERVAL_MS);
   }
@@ -53,8 +49,7 @@ export async function waitForDetailEnrichmentPage(
   );
 }
 
-function hasExpectedPendingDetail(tab: chrome.tabs.Tab, feedId: string): boolean {
-  if (tab.status !== "loading") return false;
+function hasExpectedDetailUrl(tab: chrome.tabs.Tab, feedId: string): boolean {
   return [tab.url, tab.pendingUrl].some(
     (value) => typeof value === "string" && isSupportedDetailPageForFeed(value, feedId),
   );
