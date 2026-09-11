@@ -95,11 +95,11 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
     );
   });
 
-  it("详情页持续 loading 时保留有界导航诊断", async () => {
+  it("非详情页持续 loading 时保留有界导航诊断", async () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({
       id: 8,
       status: "loading",
-      url: "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token",
+      url: "about:blank",
     } as never);
     const fetchMock = serviceResponses(
       claim("get_feed_media", {
@@ -119,9 +119,9 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
         failure_code: "DETAIL_NAVIGATION_FAILED",
         target_tab_exists: true,
         last_tab_status: "loading",
-        last_route_class: "/explore/<feed_id>",
-        url_host_is_xhs: true,
-        expected_route_matched: true,
+        last_route_class: "/blank",
+        url_host_is_xhs: false,
+        expected_route_matched: false,
         tab_removed: false,
       },
     });

@@ -31,6 +31,7 @@ from .collection_images import (
 from .collections import create_collection_enrichment_router, create_collection_router
 from .error_handlers import register_exception_handlers
 from .extension import create_extension_router
+from .extractions import create_extraction_router
 from .login import create_login_router
 from .managed_browser import create_managed_browser_router
 from .managed_publication import create_managed_publication_router
@@ -49,7 +50,6 @@ EXTENSION_ORIGIN_PATTERN = (
     r"^(chrome-extension|moz-extension|safari-web-extension)://"
     r"[A-Za-z0-9._-]+$"
 )
-
 
 def create_api(
     settings: AppSettings | None = None,
@@ -229,6 +229,13 @@ def create_api(
                 enrichment_jobs,
             )
         )
+    note_extraction = getattr(dependencies, "note_extraction", None)
+    if note_extraction is not None and collection_repository is not None:
+        api.include_router(
+            create_extraction_router(
+                note_extraction, collection_repository, enrichment_jobs
+            )
+        )
     api.include_router(
         create_publication_router(
             dependencies.publication.drafts,
@@ -262,7 +269,6 @@ def create_api(
         return {"status": "ok"}
 
     return api
-
 
 async def run_api(
     settings: AppSettings,

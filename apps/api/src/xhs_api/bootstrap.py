@@ -20,16 +20,22 @@ from xhs_adapters.sqlite import (
     SqliteCollectionMediaArtifactRepository,
     SqliteCollectionRepository,
     SqliteCollectionVideoContentRepository,
+    SqliteNoteExtractionRepository,
     SqlitePostRepository,
     SqliteTaskRepository,
 )
 from xhs_adapters.video import (
+    FasterWhisperTranscriber,
+    PaddleOcrRecognizer,
+    PyAvAudioExtractor,
+    PyAvVideoInspector,
     SafeVideoArtifactStore,
 )
 from xhs_core.application import (
     AtomicClientSlot,
     CollectionDetailEnrichmentService,
     CollectionImportService,
+    NoteExtractionService,
     VideoProcessingService,
 )
 from xhs_core.domain import CollectionMediaArtifactRepository
@@ -60,6 +66,7 @@ class ApiDependencies:
     collection_enrichment: CollectionDetailEnrichmentService
     collection_media_repository: CollectionMediaArtifactRepository
     video_processing: VideoProcessingService
+    note_extraction: NoteExtractionService
     video_gateway: HttpxGateway
     publication: PublicationRuntime
     settings: SettingsManager
@@ -114,10 +121,12 @@ def create_api_dependencies(
     )
     video_gateway = HttpxGateway(settings)
     video_media = _CapabilityVideoMediaAcquirer(capabilities)
+    video_repository = SqliteCollectionVideoContentRepository(database)
+    content_ocr = PaddleOcrRecognizer()
     video_processing = VideoProcessingService(
         collection_repository,
         enrichment_repository,
-        SqliteCollectionVideoContentRepository(database),
+        video_repository,
         video_media,
         SafeVideoArtifactStore(
             Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
@@ -125,6 +134,19 @@ def create_api_dependencies(
             / "video-content",
             video_gateway,
         ),
+        inspector=PyAvVideoInspector(),
+        transcriber=FasterWhisperTranscriber(model_size="base"),
+        ocr=content_ocr,
+        audio_extractor=PyAvAudioExtractor(),
+    )
+    note_extraction = NoteExtractionService(
+        collection_repository,
+        enrichment_repository,
+        collection_media_repository,
+        SqliteNoteExtractionRepository(database),
+        video_repository,
+        content_ocr,
+        settings.output_root,
     )
     return ApiDependencies(
         browser=browser,
@@ -137,6 +159,7 @@ def create_api_dependencies(
         collection_enrichment=collection_enrichment,
         collection_media_repository=collection_media_repository,
         video_processing=video_processing,
+        note_extraction=note_extraction,
         video_gateway=video_gateway,
         publication=publication,
         settings=SettingsManager(

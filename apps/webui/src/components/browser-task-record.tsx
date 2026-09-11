@@ -21,6 +21,7 @@ const KIND_LABELS: Record<BrowserTaskKind, string> = {
   list_feeds: "看推荐",
   search_feeds: "搜索",
   get_feed_detail: "看帖子详情",
+  get_feed_media: "读取帖子视频媒体",
   get_user_profile: "看用户主页",
   get_my_profile: "看我的主页",
   set_like: "点赞",

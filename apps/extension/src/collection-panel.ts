@@ -13,6 +13,7 @@ import type {
   CollectionImportObservation,
   CollectionImportResponse,
   CollectionImportResult,
+  NoteExtractionResponse,
 } from "./collection-import-types";
 
 type CollectionImportHandler =
@@ -26,6 +27,7 @@ export function createCollectionPanel(
   controllerFactory: (onProgress: (count: number, round: number) => void) => CollectionCaptureController,
   onImport?: CollectionImportHandler,
   onProcess?: CollectionImageProcessHandler,
+  onExtract?: (imported: CollectionImportResult) => Promise<NoteExtractionResponse>,
 ): { toggle(): void; close(): void; getRootForTest(): ShadowRoot } {
   const host = document.createElement("div");
   host.id = "xhs-collection-extension";
@@ -49,7 +51,7 @@ export function createCollectionPanel(
   const toggle = (): void => {
     if (panel) return close();
     panel = document.createElement("aside");
-    panel.innerHTML = `<h2>小红书旅行收藏夹</h2><p data-status>尚未扫描</p><p data-progress></p><div class="actions"><button data-start>扫描当前收藏夹</button><button class="secondary" data-process-selected hidden>处理选中</button><button class="secondary" data-process-all hidden>处理全部</button></div><div class="actions"><button class="secondary" data-select-all hidden>全选</button><button class="secondary" data-clear-selection hidden>清空选择</button><button class="secondary" data-close>关闭</button></div><div data-items></div>`;
+    panel.innerHTML = `<h2>小红书旅行收藏夹</h2><p data-status>尚未扫描</p><p data-progress></p><div class="actions"><button data-start>扫描当前收藏夹</button><button class="secondary" data-process-selected hidden>处理选中</button><button class="secondary" data-process-all hidden>处理全部</button><button class="secondary" data-extract hidden>抽取原始文字</button></div><div class="actions"><button class="secondary" data-select-all hidden>全选</button><button class="secondary" data-clear-selection hidden>清空选择</button><button class="secondary" data-close>关闭</button></div><div data-items></div>`;
     root.append(panel);
     const current: PanelSession = {
       panel,
@@ -69,8 +71,20 @@ export function createCollectionPanel(
     const start = panel.querySelector<HTMLButtonElement>("[data-start]")!;
     const selected = panel.querySelector<HTMLButtonElement>("[data-process-selected]")!;
     const all = panel.querySelector<HTMLButtonElement>("[data-process-all]")!;
+    const extract = panel.querySelector<HTMLButtonElement>("[data-extract]")!;
     const selectAll = panel.querySelector<HTMLButtonElement>("[data-select-all]")!;
     const clearSelection = panel.querySelector<HTMLButtonElement>("[data-clear-selection]")!;
+    extract.addEventListener("click", () => {
+      if (!onExtract || !current.imported) return;
+      extract.disabled = true;
+      status.textContent = "正在启动原始文字抽取";
+      void onExtract(current.imported).then((response) => {
+        if (current.closed) return;
+        extract.disabled = false;
+        status.textContent = response.message;
+        progress.textContent = response.ok ? "可在本地服务读取抽取状态" : "请稍后重试";
+      });
+    });
 
     panel.querySelector("[data-close]")?.addEventListener("click", close);
     items.addEventListener("change", (event) => {
@@ -103,7 +117,7 @@ export function createCollectionPanel(
     start.addEventListener("click", () => {
       if (current.closed || current.controller || current.importInFlight || current.processInFlight) return;
       if (current.observation && current.importState === "retryable" && onImport) {
-        void submitImport(current, start, status, progress, selected, all, selectAll, clearSelection, onImport);
+        void submitImport(current, start, status, progress, selected, all, extract, selectAll, clearSelection, onImport, onExtract);
         return;
       }
       start.disabled = true;
@@ -129,7 +143,7 @@ export function createCollectionPanel(
             current.selectedFeedIds.clear();
             current.results.clear();
             renderItems(current);
-            void submitImport(current, start, status, progress, selected, all, selectAll, clearSelection, onImport);
+            void submitImport(current, start, status, progress, selected, all, extract, selectAll, clearSelection, onImport, onExtract);
           } catch (error) {
             current.importState = "terminal";
             start.disabled = false;
@@ -178,9 +192,11 @@ async function submitImport(
   progress: HTMLElement,
   selected: HTMLButtonElement,
   all: HTMLButtonElement,
+  extract: HTMLButtonElement,
   selectAll: HTMLButtonElement,
   clearSelection: HTMLButtonElement,
   onImport: CollectionImportHandler,
+  onExtract?: (imported: CollectionImportResult) => Promise<NoteExtractionResponse>,
 ): Promise<void> {
   if (!current.observation) return;
   current.importInFlight = true;
@@ -200,6 +216,7 @@ async function submitImport(
       renderItems(current);
       start.disabled = false;
       start.textContent = "重新扫描";
+      extract.hidden = !onExtract;
       status.textContent = "已保存，请选择要处理的收藏";
       progress.textContent = `已保存 ${response.result.item_count} 条`;
       updateSelectionButtons(current, selected, all, selectAll, clearSelection);

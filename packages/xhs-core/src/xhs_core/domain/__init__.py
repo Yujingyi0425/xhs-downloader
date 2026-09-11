@@ -129,6 +129,20 @@ from .models import (
     WorkDetail,
     WorkType,
 )
+from .note_extraction import (  # noqa: F401
+    ExtractionArtifact,
+    ExtractionMediaType,
+    ImageOcrRecord,
+    NoteExtractionRecord,
+    NoteExtractionStatus,
+    TextProvenance,
+    TextProvenanceSource,
+)
+from .note_extraction_ports import (  # noqa: F401
+    AudioExtractor,
+    ImageOcr,
+    NoteExtractionRepository,
+)
 from .publication import (
     PublicationAsset,
     PublicationClaim,
@@ -273,18 +287,14 @@ __all__ = [
     "WorkDetail",
     "WorkType",
     "XhsError",
-    "browser_driver_supports",
-    "browser_task_may_write_platform",
-    "build_extension_identity",
-    "can_retry_browser_task",
-    "collection_fingerprint",
-    "mark_browser_runtime_telemetry_submitted",
+    "browser_driver_supports", "browser_task_may_write_platform",
+    "build_extension_identity", "can_retry_browser_task",
+    "collection_fingerprint", "mark_browser_runtime_telemetry_submitted",
     "missing_browser_failure_diagnostics",
     "overall_video_status",
     "sanitize_browser_page_diagnostics",
     "sanitize_browser_runtime_telemetry",
     "sanitize_browser_task_message",
-    "sanitize_browser_task_result",
-    "sanitize_stored_browser_task",
+    "sanitize_browser_task_result", "sanitize_stored_browser_task",
     "split_extension_identity",
 ]

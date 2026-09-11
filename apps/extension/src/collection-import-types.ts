@@ -79,6 +79,12 @@ export interface CollectionImageProcessResponse {
   result?: CollectionImageProcessResult;
 }
 
+export interface NoteExtractionResponse {
+  ok: boolean;
+  message: string;
+  job_status?: string;
+}
+
 export interface CollectionImportObservation {
   requestId: string;
   payload: CollectionImportPayload;

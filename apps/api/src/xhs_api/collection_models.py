@@ -201,3 +201,19 @@ class VideoContentResponse(BaseModel):
 
     source_order: int = Field(ge=0)
     content: CollectionVideoContent
+
+
+class NoteExtractionProcessRequest(BaseModel):
+    """原始笔记抽取的本机管理参数。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    limit: int | None = Field(default=None, ge=1, le=500)
+    retry_failed: bool = False
+
+
+class NoteExtractionProcessAcceptedResponse(BaseModel):
+    """原始笔记抽取任务已接收响应。"""
+
+    snapshot_id: str
+    job_status: str

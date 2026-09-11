@@ -53,6 +53,7 @@ from .extension_account_challenges import (
 from .managed_browser_gate import ManagedBrowserExecutionGate
 from .managed_browser_worker import ManagedBrowserWorker
 from .managed_publication_worker import ManagedPublicationWorker
+from .note_extraction import NoteExtractionService
 from .publication_auth import ExtensionCredentialService
 from .publication_drafts import PublicationDraftService
 from .publication_execution import PublicationExecutionService
@@ -101,6 +102,7 @@ __all__ = [
     "ManagedBrowserExecutionGate",
     "ManagedBrowserWorker",
     "ManagedPublicationWorker",
+    "NoteExtractionService",
     "OneTimeAccountConsistencyGuard",
     "PublicationDraftService",
     "PublicationExecutionService",

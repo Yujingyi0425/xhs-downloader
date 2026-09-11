@@ -6,6 +6,7 @@ import {
   type CollectionImportResult,
   type CollectionImportResponse,
   type CollectionImageProcessResponse,
+  type NoteExtractionResponse,
 } from "./collection-import-types";
 
 /** 把一次成功捕获冻结为可重试的内存 observation。 */
@@ -73,5 +74,22 @@ export async function sendCollectionImages(
     return processed ?? { ok: false, message: "图片处理失败，请稍后重试", kind: "network" };
   } catch {
     return { ok: false, message: "图片处理失败，请稍后重试", kind: "network" };
+  }
+}
+
+/** 触发已保存快照的原始文本抽取；只发送非敏感 snapshot identity。 */
+export async function sendNoteExtraction(
+  imported: CollectionImportResult,
+): Promise<NoteExtractionResponse> {
+  try {
+    const response = await fetch(
+      `http://127.0.0.1:5556/xhs/collections/snapshots/${encodeURIComponent(imported.snapshot_id)}/extractions/process`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retry_failed: true }) },
+    );
+    if (!response.ok) return { ok: false, message: "原始抽取未启动" };
+    const result = await response.json() as { job_status?: string };
+    return { ok: true, message: "原始抽取已启动", job_status: result.job_status };
+  } catch {
+    return { ok: false, message: "原始抽取启动失败，请检查本地服务" };
   }
 }

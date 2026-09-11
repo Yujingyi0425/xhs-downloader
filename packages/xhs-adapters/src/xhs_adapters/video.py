@@ -9,11 +9,11 @@ from xhs_core.domain import (
     FeedMediaResult,
     VideoOcrFrame,
     VideoOcrResult,
-    VideoTranscript,
-    VideoTranscriptSegment,
 )
 
 from .filesystem.streaming import retry_stream_to_atomic_file
+from .video_audio import PyAvAudioExtractor  # noqa: F401
+from .video_transcription import FasterWhisperTranscriber  # noqa: F401
 
 
 class SafeVideoArtifactStore:
@@ -96,63 +96,28 @@ class PyAvVideoInspector:
             视频时长和按时间排序的关键帧。
         """
         container = av.open(path)
-        stream = container.streams.video[0]
-        duration = float(stream.duration * stream.time_base) if stream.duration else 0.0
-        wanted = set(range(0, max(1, int(duration) + self._interval), self._interval))
-        frames: list[tuple[float, object]] = []
-        for frame in container.decode(stream):
-            timestamp = float(frame.time or 0)
-            second = (
-                min(wanted, key=lambda value: abs(value - timestamp)) if wanted else 0
+        try:
+            stream = container.streams.video[0]
+            duration = (
+                float(stream.duration * stream.time_base) if stream.duration else 0.0
             )
-            if abs(second - timestamp) <= self._interval / 2 and all(
-                existing != second for existing, _ in frames
-            ):
-                frames.append((timestamp, frame.to_image()))
-                if len(frames) >= self._max_frames:
-                    break
-        container.close()
-        return duration, frames
-
-
-class FasterWhisperTranscriber:
-    """惰性复用的本地 faster-whisper CPU int8 转写器。"""
-
-    def __init__(self, model_size: str = "small") -> None:
-        self._model_size = model_size
-        self._model = None
-
-    def _get_model(self):
-        if self._model is None:
-            from faster_whisper import WhisperModel
-
-            self._model = WhisperModel(
-                self._model_size, device="cpu", compute_type="int8"
+            duration = duration or float(container.duration or 0) / av.time_base
+            wanted = set(
+                range(0, max(1, int(duration) + self._interval), self._interval)
             )
-        return self._model
-
-    def transcribe(self, path: str) -> VideoTranscript:
-        """使用单个惰性初始化的本地模型转写 MP4。
-
-        Args:
-            path: 本地 MP4 路径。
-
-        Returns:
-            脱敏后的转写结果。
-        """
-        segments, info = self._get_model().transcribe(path)
-        values = [
-            VideoTranscriptSegment(
-                start=float(s.start), end=float(s.end), text=str(s.text).strip()
-            )
-            for s in segments
-        ]
-        return VideoTranscript(
-            language=str(info.language or ""),
-            duration_seconds=float(info.duration or 0),
-            text=" ".join(item.text for item in values),
-            segments=values,
-        )
+            frames: list[tuple[float, object]] = []
+            for frame in container.decode(stream):
+                timestamp = float(frame.time or 0)
+                second = min(wanted, key=lambda value: abs(value - timestamp))
+                if abs(second - timestamp) <= self._interval / 2 and all(
+                    existing != second for existing, _ in frames
+                ):
+                    frames.append((timestamp, frame.to_image()))
+                    if len(frames) >= self._max_frames:
+                        break
+            return duration, frames
+        finally:
+            container.close()
 
 
 class PaddleOcrRecognizer:
@@ -160,12 +125,24 @@ class PaddleOcrRecognizer:
 
     def __init__(self) -> None:
         self._engine = None
+        self._rapid_engine = None
+        self._paddle_unavailable = False
 
     def _get_engine(self):
         if self._engine is None:
             from paddleocr import PaddleOCR
 
-            self._engine = PaddleOCR(lang="japan")
+            options = {
+                "lang": "ch",
+                "use_doc_orientation_classify": False,
+                "use_doc_unwarping": False,
+                "use_textline_orientation": False,
+                "enable_mkldnn": False,
+            }
+            try:
+                self._engine = PaddleOCR(**options)
+            except TypeError:
+                self._engine = PaddleOCR(lang="ch")
         return self._engine
 
     def recognize(self, frames) -> VideoOcrResult:
@@ -177,15 +154,86 @@ class PaddleOcrRecognizer:
         Returns:
             仅包含文字和时间戳的 OCR 结果。
         """
+        if isinstance(frames, (str, Path)):
+            return self.recognize_image(str(frames))
         results: list[VideoOcrFrame] = []
         for timestamp, image in frames:
-            output = self._get_engine().ocr(image, cls=False)
-            text = _ocr_text(output)
+            if self._paddle_unavailable:
+                text = _rapid_ocr_text(image, self._get_rapid_engine())
+            else:
+                try:
+                    output = self._recognize(image)
+                    text = _ocr_text(output)
+                except Exception:
+                    self._paddle_unavailable = True
+                    text = _rapid_ocr_text(image, self._get_rapid_engine())
             if text and (not results or results[-1].text != text):
                 results.append(VideoOcrFrame(timestamp_seconds=timestamp, text=text))
         return VideoOcrResult(
             combined_text="\n".join(item.text for item in results), frames=results
         )
+
+    def recognize_image(self, path: str) -> str:
+        """识别一个本地图片 artifact，供 image raw extraction 复用。
+
+        Args:
+            path: 本地图片 artifact 路径。
+
+        Returns:
+            OCR 纯文本；没有文字时为空字符串。
+        """
+        from PIL import Image
+
+        try:
+            from pillow_heif import register_heif_opener
+
+            register_heif_opener()
+        except ImportError:
+            pass
+
+        with Image.open(path) as image:
+            if self._paddle_unavailable:
+                return _rapid_ocr_text(image, self._get_rapid_engine())
+            try:
+                return _ocr_text(self._recognize(image))
+            except Exception:
+                self._paddle_unavailable = True
+                return _rapid_ocr_text(image, self._get_rapid_engine())
+
+    def _recognize(self, image):
+        import numpy as np
+        from PIL import Image
+
+        if isinstance(image, Image.Image):
+            image = np.asarray(image.convert("RGB"))
+        engine = self._get_engine()
+        if hasattr(engine, "predict"):
+            return engine.predict(image)
+        return engine.ocr(image, cls=False)
+
+    def _get_rapid_engine(self):
+        if self._rapid_engine is None:
+            from rapidocr_onnxruntime import RapidOCR
+
+            self._rapid_engine = RapidOCR()
+        return self._rapid_engine
+
+
+def _rapid_ocr_text(image, engine) -> str:
+    """提取 RapidOCR 的 ``box/text/score`` 结果，不保存置信度。"""
+    import numpy as np
+    from PIL import Image
+
+    if isinstance(image, Image.Image):
+        image = np.asarray(image.convert("RGB"))
+    result, _ = engine(image)
+    if not result:
+        return ""
+    return " ".join(
+        str(item[1]).strip()
+        for item in result
+        if isinstance(item, (list, tuple)) and len(item) > 1 and str(item[1]).strip()
+    )
 
 
 def _ocr_text(output) -> str:
@@ -193,6 +241,27 @@ def _ocr_text(output) -> str:
     values: list[str] = []
 
     def visit(value) -> None:
+        if isinstance(value, dict):
+            for key in ("rec_texts", "text", "texts"):
+                candidate = value.get(key)
+                if isinstance(candidate, str):
+                    values.append(candidate.strip())
+                elif isinstance(candidate, (list, tuple)):
+                    values.extend(
+                        str(item).strip()
+                        for item in candidate
+                        if str(item).strip()
+                    )
+            for item in value.values():
+                if isinstance(item, (dict, list, tuple)):
+                    visit(item)
+            return
+        if hasattr(value, "json"):
+            try:
+                visit(value.json)
+                return
+            except Exception:
+                pass
         if (
             isinstance(value, (list, tuple))
             and len(value) == 2

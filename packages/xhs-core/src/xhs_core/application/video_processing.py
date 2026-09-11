@@ -3,6 +3,7 @@
 from hashlib import sha256
 
 from xhs_core.domain import (
+    AudioExtractor,
     CollectionEnrichmentStatus,
     CollectionRepository,
     CollectionVideoContent,
@@ -33,6 +34,7 @@ class VideoProcessingService:
         inspector: VideoInspector | None = None,
         transcriber: VideoTranscriber | None = None,
         ocr: VideoOcr | None = None,
+        audio_extractor: AudioExtractor | None = None,
     ) -> None:
         self._collections = collections
         self._enrichments = enrichments
@@ -42,6 +44,7 @@ class VideoProcessingService:
         self._inspector = inspector
         self._transcriber = transcriber
         self._ocr = ocr
+        self._audio_extractor = audio_extractor
 
     async def process_snapshot(
         self, snapshot_id: str, limit: int | None = None, keep_source: bool = True
@@ -166,6 +169,81 @@ class VideoProcessingService:
             return await self._fail_stage(
                 content, "acquisition_status", "media_download_failed"
             )
+        if self._inspector is not None:
+            resolve_path = getattr(self._artifacts, "resolve_path", lambda value: value)
+            local_path = resolve_path(relative_path)
+            try:
+                duration, frames = self._inspector.inspect(local_path)
+                content = content.model_copy(update={"duration_seconds": duration})
+            except Exception:
+                return await self._fail_stage(
+                    content, "acquisition_status", "media_inspection_failed"
+                )
+            audio_path = None
+            try:
+                if self._audio_extractor is not None and self._transcriber is not None:
+                    if self._audio_extractor is not None:
+                        audio_path = self._audio_extractor.extract(local_path)
+                        transcript = self._transcriber.transcribe(audio_path)
+                    else:
+                        transcript = self._transcriber.transcribe(local_path)
+                    content = content.model_copy(
+                        update={
+                            "stt_status": VideoStageStatus.SUCCEEDED,
+                            "transcript": transcript,
+                        }
+                    )
+                else:
+                    content = content.model_copy(
+                        update={"stt_status": VideoStageStatus.SKIPPED}
+                    )
+            except Exception:
+                content = content.model_copy(
+                    update={
+                        "stt_status": VideoStageStatus.FAILED_RETRYABLE,
+                        "last_error_code": "video_asr_failed",
+                    }
+                )
+                content = await self._persist(
+                    content.model_copy(
+                        update={"status": VideoProcessingStatus.FAILED_RETRYABLE}
+                    )
+                )
+            finally:
+                if audio_path and self._audio_extractor is not None:
+                    self._audio_extractor.cleanup(audio_path)
+            try:
+                if self._audio_extractor is not None and self._ocr is not None:
+                    ocr_result = self._ocr.recognize(frames)
+                    content = content.model_copy(
+                        update={
+                            "ocr_status": VideoStageStatus.SUCCEEDED,
+                            "ocr": ocr_result,
+                        }
+                    )
+                else:
+                    content = content.model_copy(
+                        update={"ocr_status": VideoStageStatus.SKIPPED}
+                    )
+            except Exception:
+                content = content.model_copy(
+                    update={
+                        "ocr_status": VideoStageStatus.FAILED_RETRYABLE,
+                        "last_error_code": "video_keyframe_ocr_failed",
+                    }
+                )
+                content = await self._persist(
+                    content.model_copy(
+                        update={"status": VideoProcessingStatus.FAILED_RETRYABLE}
+                    )
+                )
+        else:
+            content = content.model_copy(
+                update={
+                    "stt_status": VideoStageStatus.SKIPPED,
+                    "ocr_status": VideoStageStatus.SKIPPED,
+                }
+            )
         if not keep_source and hasattr(self._artifacts, "discard"):
             await self._artifacts.discard(relative_path)
             content = content.model_copy(
@@ -181,9 +259,11 @@ class VideoProcessingService:
         return await self._persist(
             content.model_copy(
                 update={
-                    "status": VideoProcessingStatus.SUCCEEDED,
-                    "stt_status": VideoStageStatus.SKIPPED,
-                    "ocr_status": VideoStageStatus.SKIPPED,
+                    "status": overall_video_status(
+                        content.acquisition_status,
+                        content.stt_status,
+                        content.ocr_status,
+                    ),
                 }
             )
         )

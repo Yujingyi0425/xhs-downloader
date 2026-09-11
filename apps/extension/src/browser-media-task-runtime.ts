@@ -111,8 +111,9 @@ export async function waitForMediaDetailPage(
 function hasExpectedPendingDetail(tab: chrome.tabs.Tab, feedId: string): boolean {
   return (
     tab.status === "loading" &&
-    typeof tab.pendingUrl === "string" &&
-    isSupportedDetailPageForFeed(tab.pendingUrl, feedId)
+    [tab.url, tab.pendingUrl].some(
+      (value) => typeof value === "string" && isSupportedDetailPageForFeed(value, feedId),
+    )
   );
 }
 
