@@ -8,6 +8,7 @@ from xhs_core.domain import (
     CollectionFeedDetail,
     CollectionStatus,
     CollectionVideoContent,
+    NoteExtractionRecord,
 )
 
 
@@ -183,7 +184,7 @@ class VideoProcessRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    limit: int = Field(default=1, ge=1, le=3)
+    limit: int | None = Field(default=None, ge=1, le=500)
     keep_source: bool = True
 
 
@@ -217,3 +218,17 @@ class NoteExtractionProcessAcceptedResponse(BaseModel):
 
     snapshot_id: str
     job_status: str
+
+
+class NoteExtractionSummaryResponse(BaseModel):
+    """当前快照原始抽取的安全汇总。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: str
+    total: int = Field(ge=0)
+    complete: int = Field(ge=0)
+    partial: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    pending: int = Field(ge=0)
+    items: list[NoteExtractionRecord]

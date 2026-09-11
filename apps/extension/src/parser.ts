@@ -42,8 +42,7 @@ export function parseInitialStateRecord(
   const images = list(note.imageList);
   const video = object(note.video);
   const kind = text(note.type);
-  const media =
-    kind === "video" && images.length <= 1 ? parseVideo(video, images) : parseImages(images);
+  const media = kind === "video" || hasKeys(video) ? parseVideo(video, images) : parseImages(images);
   return {
     workId: resolvedWorkId,
     sourceUrl,

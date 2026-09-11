@@ -6,6 +6,7 @@ from xhs_core.domain import NoteExtractionRecord
 from .collection_models import (
     NoteExtractionProcessAcceptedResponse,
     NoteExtractionProcessRequest,
+    NoteExtractionSummaryResponse,
 )
 from .settings import allow_loopback_settings
 
@@ -75,6 +76,44 @@ def create_extraction_router(service, repository, coordinator) -> APIRouter:
         if await repository.get_snapshot(snapshot_id) is None:
             raise HTTPException(status_code=404, detail="收藏夹快照不存在")
         return await service.list_snapshot(snapshot_id)
+
+    @router.get(
+        "/snapshots/{snapshot_id}/extractions/summary",
+        response_model=NoteExtractionSummaryResponse,
+    )
+    async def read_extraction_summary(snapshot_id: str, request: Request):
+        """读取当前快照的抽取状态汇总和记录。"""
+        _require_loopback(request)
+        if await repository.get_snapshot(snapshot_id) is None:
+            raise HTTPException(status_code=404, detail="收藏夹快照不存在")
+        records = await service.list_snapshot(snapshot_id)
+        statuses = [record.extraction_status.value for record in records]
+        return NoteExtractionSummaryResponse(
+            snapshot_id=snapshot_id,
+            total=len(records),
+            complete=statuses.count("succeeded"),
+            partial=statuses.count("partial"),
+            failed=statuses.count("failed"),
+            pending=sum(status in {"pending", "running"} for status in statuses),
+            items=records,
+        )
+
+    @router.get(
+        "/snapshots/{snapshot_id}/extractions/{feed_id}",
+        response_model=NoteExtractionRecord,
+    )
+    async def read_extraction(snapshot_id: str, feed_id: str, request: Request):
+        """按 snapshot/feed 读取一条 canonical extraction record。"""
+        _require_loopback(request)
+        if await repository.get_snapshot(snapshot_id) is None:
+            raise HTTPException(status_code=404, detail="收藏夹快照不存在")
+        try:
+            record = await service.get(snapshot_id, feed_id)
+        except LookupError as error:
+            raise HTTPException(status_code=404, detail="收藏夹快照不存在") from error
+        if record is None:
+            raise HTTPException(status_code=404, detail="抽取记录不存在")
+        return record
 
     return router
 

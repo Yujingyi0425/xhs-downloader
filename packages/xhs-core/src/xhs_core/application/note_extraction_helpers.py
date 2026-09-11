@@ -12,6 +12,48 @@ from xhs_core.domain import (
 )
 
 
+def _failed_image_errors(batch) -> list[str]:
+    return [
+        item.error_code or "image_artifact_failed"
+        for item in batch.items
+        if item.status.value == "failed" and item.kind.value == "image"
+    ]
+
+
+def _video_provenance(sources: list[TextProvenance], video) -> list[TextProvenance]:
+    result = list(sources)
+    if video.transcript:
+        if video.transcript.segments:
+            result.extend(
+                TextProvenance(
+                    source=TextProvenanceSource.VIDEO_ASR,
+                    text=segment.text,
+                    start_seconds=segment.start,
+                    end_seconds=segment.end,
+                )
+                for segment in video.transcript.segments
+                if segment.text
+            )
+        elif video.transcript.text:
+            result.append(
+                TextProvenance(
+                    source=TextProvenanceSource.VIDEO_ASR,
+                    text=video.transcript.text,
+                )
+            )
+    if video.ocr:
+        result.extend(
+            TextProvenance(
+                source=TextProvenanceSource.VIDEO_KEYFRAME_OCR,
+                text=frame.text,
+                timestamp_seconds=frame.timestamp_seconds,
+            )
+            for frame in video.ocr.frames
+            if frame.text
+        )
+    return result
+
+
 def _base_record(snapshot_id, feed_id, current, detail, media_type):
     sources = []
     if detail.title.strip():

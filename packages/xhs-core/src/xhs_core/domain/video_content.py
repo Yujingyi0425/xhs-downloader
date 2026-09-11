@@ -1,6 +1,7 @@
 """TC4 视频内容处理的独立领域模型。"""
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -56,10 +57,11 @@ class VideoOcrFrame(BaseModel):
 
     timestamp_seconds: float = Field(ge=0)
     text: str = Field(default="", max_length=20_000)
+    status: Literal["SUCCESS", "NO_TEXT"] = "SUCCESS"
 
 
 class VideoOcrResult(BaseModel):
-    """按时间顺序去重后的 OCR 结果。"""
+    """按时间顺序保存的关键帧 OCR 结果。"""
 
     model_config = ConfigDict(extra="forbid")
 

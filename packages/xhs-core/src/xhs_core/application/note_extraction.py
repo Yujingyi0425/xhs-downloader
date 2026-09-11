@@ -23,8 +23,10 @@ from .collection_media_service import collection_media_request_id
 from .note_extraction_helpers import (
     _base_record,
     _combined_text,
+    _failed_image_errors,
     _safe_media_path,
     _save_partial,
+    _video_provenance,
 )
 
 
@@ -76,10 +78,15 @@ class NoteExtractionService:
             if current and current.extraction_status is NoteExtractionStatus.SUCCEEDED:
                 records.append(current)
                 continue
-            if current and not retry_failed and current.extraction_status in {
-                NoteExtractionStatus.PARTIAL,
-                NoteExtractionStatus.FAILED,
-            }:
+            if (
+                current
+                and not retry_failed
+                and current.extraction_status
+                in {
+                    NoteExtractionStatus.PARTIAL,
+                    NoteExtractionStatus.FAILED,
+                }
+            ):
                 records.append(current)
                 continue
             records.append(await self._process_one(snapshot_id, item.feed_id, current))
@@ -97,6 +104,12 @@ class NoteExtractionService:
         if await self._collections.get_snapshot(snapshot_id) is None:
             raise LookupError(snapshot_id)
         return await self._extractions.list_snapshot(snapshot_id)
+
+    async def get(self, snapshot_id: str, feed_id: str) -> NoteExtractionRecord | None:
+        """Args: snapshot_id, feed_id. Returns: one canonical record or None."""
+        if await self._collections.get_snapshot(snapshot_id) is None:
+            raise LookupError(snapshot_id)
+        return await self._extractions.get(snapshot_id, feed_id)
 
     async def _process_one(self, snapshot_id, feed_id, current):
         enrichment = await self._enrichments.get_enrichment(snapshot_id, feed_id)
@@ -145,12 +158,19 @@ class NoteExtractionService:
             and item.kind is MediaKind.IMAGE
             and item.artifact is not None
         ]
+        failed_errors = _failed_image_errors(batch)
         if not successful:
             return await _save_partial(
-                self._extractions, record, [], ["image_artifact_missing"]
+                self._extractions,
+                record,
+                [],
+                [
+                    *failed_errors,
+                    "image_artifact_missing",
+                ],
             )
         ocr_records: list[ImageOcrRecord] = []
-        errors: list[str] = []
+        errors: list[str] = list(failed_errors)
         for item in sorted(successful, key=lambda value: value.media_index):
             artifact = item.artifact
             assert artifact is not None
@@ -211,9 +231,7 @@ class NoteExtractionService:
                 )
         errors = sorted(set(errors))
         status = (
-            NoteExtractionStatus.PARTIAL
-            if errors
-            else NoteExtractionStatus.SUCCEEDED
+            NoteExtractionStatus.PARTIAL if errors else NoteExtractionStatus.SUCCEEDED
         )
         sources = list(record.text_provenance)
         sources.extend(
@@ -256,24 +274,7 @@ class NoteExtractionService:
                     size=video.artifact.size,
                 )
             )
-        sources = list(record.text_provenance)
-        if video.transcript and video.transcript.text:
-            sources.append(
-                TextProvenance(
-                    source=TextProvenanceSource.VIDEO_ASR,
-                    text=video.transcript.text,
-                )
-            )
-        if video.ocr:
-            sources.extend(
-                TextProvenance(
-                    source=TextProvenanceSource.VIDEO_KEYFRAME_OCR,
-                    text=frame.text,
-                    timestamp_seconds=frame.timestamp_seconds,
-                )
-                for frame in video.ocr.frames
-                if frame.text
-            )
+        sources = _video_provenance(record.text_provenance, video)
         errors = [video.last_error_code] if video.last_error_code else []
         status = (
             NoteExtractionStatus.SUCCEEDED

@@ -43,6 +43,8 @@ class TextProvenance(BaseModel):
     source: TextProvenanceSource
     text: str = Field(max_length=100_000)
     media_index: int | None = Field(default=None, ge=1)
+    start_seconds: float | None = Field(default=None, ge=0)
+    end_seconds: float | None = Field(default=None, ge=0)
     timestamp_seconds: float | None = Field(default=None, ge=0)
 
 

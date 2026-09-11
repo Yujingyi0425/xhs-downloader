@@ -167,8 +167,13 @@ class PaddleOcrRecognizer:
                 except Exception:
                     self._paddle_unavailable = True
                     text = _rapid_ocr_text(image, self._get_rapid_engine())
-            if text and (not results or results[-1].text != text):
-                results.append(VideoOcrFrame(timestamp_seconds=timestamp, text=text))
+            results.append(
+                VideoOcrFrame(
+                    timestamp_seconds=timestamp,
+                    text=text,
+                    status="SUCCESS" if text else "NO_TEXT",
+                )
+            )
         return VideoOcrResult(
             combined_text="\n".join(item.text for item in results), frames=results
         )
