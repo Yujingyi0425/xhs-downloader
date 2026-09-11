@@ -139,7 +139,10 @@ class ManagedBrowserWorker:
                 "受管浏览器正在执行",
             )
             execution_input = running
-            if claim.task.kind is BrowserTaskKind.GET_FEED_DETAIL:
+            if claim.task.kind in {
+                BrowserTaskKind.GET_FEED_DETAIL,
+                BrowserTaskKind.GET_FEED_MEDIA,
+            }:
                 execution_input = running.model_copy(
                     update={"payload": claim.task.payload}
                 )

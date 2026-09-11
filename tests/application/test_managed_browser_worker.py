@@ -188,6 +188,51 @@ async def test_worker_maps_executor_exceptions_by_effect_safety(tmp_path) -> Non
     assert len(executor.tasks) == 2
 
 
+async def test_worker_hydrates_ephemeral_media_token_for_managed_executor(
+    tmp_path,
+) -> None:
+    """确保受管媒体任务也收到不落盘的临时访问令牌。
+
+    Args:
+        tmp_path: Pytest 提供的临时目录。
+    """
+    tasks, execution = _services(tmp_path)
+    controller = _Controller(ManagedBrowserState.RUNNING)
+    executor = _Executor(
+        BrowserTaskExecutionResult(
+            status=BrowserTaskStatus.SUCCEEDED,
+            message="媒体读取完成",
+            result={
+                "feed_id": "synthetic-feed",
+                "note_type": "video",
+                "media": [],
+            },
+        )
+    )
+    task = await tasks.submit_ephemeral_feed_media(
+        {
+            "feed_id": "synthetic-feed",
+            "xsec_token": "synthetic-token",
+        },
+        target_driver=BrowserDriver.MANAGED,
+    )
+    worker = ManagedBrowserWorker(
+        controller,
+        execution,
+        executor,
+        ManagedBrowserExecutionGate(),
+        poll_interval=0.01,
+    )
+
+    await worker.start()
+    try:
+        await _wait_for_status(tasks, task.task_id, BrowserTaskStatus.SUCCEEDED)
+    finally:
+        await worker.close()
+
+    assert executor.tasks[0].payload["xsec_token"] == "synthetic-token"
+
+
 async def test_worker_preserves_executor_confirmed_failure(tmp_path) -> None:
     """确保执行器确认未产生写入时可返回明确失败。
 
