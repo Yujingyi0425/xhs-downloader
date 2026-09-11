@@ -123,7 +123,10 @@ function feedMediaResult(
   return {
     feed_id: feedId,
     note_type: media.some((item) => item.kind === "video") ? "video" : "unknown",
-    media,
+    media: media.map(({ previewUrl, ...item }) => ({
+      ...item,
+      ...(previewUrl ? { preview_url: previewUrl } : {}),
+    })),
   };
 }
 function emptyStateInspection(): InitialStateVideoInspection {

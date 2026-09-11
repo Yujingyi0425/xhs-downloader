@@ -15,6 +15,7 @@ describe("GET_FEED_MEDIA 页面执行边界", () => {
               noteId: "synthetic-feed",
               type: "video",
               user: { userId: "synthetic-author" },
+              imageList: [{ urlDefault: "https://sns-img-bd.xhscdn.com/synthetic-cover" }],
               video: {
                 media: {
                   stream: {
@@ -40,7 +41,13 @@ describe("GET_FEED_MEDIA 页面执行边界", () => {
       result: {
         feed_id: "synthetic-feed",
         note_type: "video",
-        media: [{ kind: "video", url: "https://example.invalid/synthetic.mp4" }],
+        media: [
+          {
+            kind: "video",
+            url: "https://example.invalid/synthetic.mp4",
+            preview_url: "https://sns-img-bd.xhscdn.com/synthetic-cover",
+          },
+        ],
       },
     });
     await expect(
