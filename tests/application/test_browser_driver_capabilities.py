@@ -28,6 +28,7 @@ def test_extension_implements_every_task_kind() -> None:
     assert BrowserTaskKind.REPLY_COMMENT in unsupported
     assert BrowserTaskKind.SET_LIKE not in unsupported
     assert BrowserTaskKind.LIST_FEEDS not in unsupported
+    assert BrowserTaskKind.GET_FEED_MEDIA not in unsupported
 
 
 async def test_submission_rejects_tasks_the_driver_cannot_execute(

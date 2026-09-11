@@ -183,6 +183,7 @@ _MANAGED_BROWSER_KINDS = frozenset(
         BrowserTaskKind.LIST_FEEDS,
         BrowserTaskKind.SEARCH_FEEDS,
         BrowserTaskKind.GET_FEED_DETAIL,
+        BrowserTaskKind.GET_FEED_MEDIA,
         BrowserTaskKind.GET_USER_PROFILE,
         BrowserTaskKind.GET_MY_PROFILE,
         BrowserTaskKind.SET_LIKE,
