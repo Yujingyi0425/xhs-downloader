@@ -45,6 +45,19 @@ from tests.infrastructure.managed_page_fakes import (
             "detail",
         ),
         (
+            BrowserTaskKind.GET_FEED_MEDIA,
+            {
+                "feed_id": "synthetic-feed",
+                "xsec_token": "synthetic-xsec",
+            },
+            "/explore/synthetic-feed",
+            {
+                "xsec_token": ["synthetic-xsec"],
+                "xsec_source": ["pc_feed"],
+            },
+            "media",
+        ),
+        (
             BrowserTaskKind.GET_USER_PROFILE,
             {
                 "user_id": "synthetic-user",
@@ -83,7 +96,7 @@ async def test_read_tasks_navigate_and_parse_successfully(
             "has_more": False,
             "cursor": "",
         }
-    elif kind is BrowserTaskKind.GET_FEED_DETAIL:
+    elif kind in {BrowserTaskKind.GET_FEED_DETAIL, BrowserTaskKind.GET_FEED_MEDIA}:
         result = {
             "feed_id": "synthetic-feed",
             "author": {"user_id": "synthetic-user"},
