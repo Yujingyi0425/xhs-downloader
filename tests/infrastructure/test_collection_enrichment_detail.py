@@ -66,3 +66,19 @@ async def test_detail_round_trip_and_failure_does_not_persist_partial(
         assert '"xsec_token"' not in raw
         assert "synthetic-xsec-never-persist" not in raw
         assert '"comments_cursor"' not in raw
+
+
+def test_detail_normalizes_legacy_temporary_image_route() -> None:
+    """新持久化详情不应继续保存带临时路由的图片地址。"""
+    converted = CollectionFeedDetail.from_feed_detail(
+        detail().model_copy(
+            update={
+                "image_urls": [
+                    "http://sns-webpic-qc.xhscdn.com/202609072122/"
+                    "726496a2ef314128a8a3cec0155bd038/notes_pre_post!nd_dft_wlteh_webp_3"
+                ]
+            }
+        ),
+        "feed-a",
+    )
+    assert converted.image_urls == ["https://sns-img-bd.xhscdn.com/notes_pre_post"]

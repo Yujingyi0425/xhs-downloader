@@ -12,6 +12,7 @@ from xhs_core.domain import (
     WorkDetail,
     WorkType,
 )
+from xhs_core.domain.collection_enrichment import normalize_collection_image_url
 
 
 def collection_feed_detail_to_work_detail(
@@ -88,7 +89,7 @@ def _media_resources(
         return []
     resources: list[MediaResource] = []
     for index, raw_url in enumerate(detail.image_urls, start=1):
-        media_url = raw_url.strip()
+        media_url = normalize_collection_image_url(raw_url.strip())
         _validate_media_url(media_url)
         resources.append(
             MediaResource(

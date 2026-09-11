@@ -79,7 +79,9 @@ def test_single_image_mapping_and_identity() -> None:
 def test_multi_image_mapping_preserves_1_to_n_order() -> None:
     """多图映射为 GALLERY，并独立使用媒体序号。"""
     mapped = collection_feed_detail_to_work_detail(
-        detail(image_urls=["https://example.invalid/a.jpg", "https://example.invalid/b"]),
+        detail(
+            image_urls=["https://example.invalid/a.jpg", "https://example.invalid/b"]
+        ),
         item(source_order=17),
     )
     assert mapped.work_type is WorkType.GALLERY
@@ -157,20 +159,32 @@ def test_empty_media_is_valid() -> None:
 def test_invalid_media_url_is_rejected() -> None:
     """图像详情中的非法 URL 不被静默写入 WorkDetail。"""
     with pytest.raises(ValueError, match="media URL"):
-        collection_feed_detail_to_work_detail(
-            detail(image_urls=["not-a-url"]), item()
-        )
+        collection_feed_detail_to_work_detail(detail(image_urls=["not-a-url"]), item())
+
+
+def test_mapper_normalizes_legacy_temporary_image_route() -> None:
+    """旧 enrichment 记录也必须使用稳定图片地址下载。"""
+    mapped = collection_feed_detail_to_work_detail(
+        detail(
+            image_urls=[
+                "http://sns-webpic-qc.xhscdn.com/202609072122/"
+                "726496a2ef314128a8a3cec0155bd038/notes_pre_post!nd_dft_wlteh_webp_3"
+            ]
+        ),
+        item(),
+    )
+    assert mapped.media[0].url == "https://sns-img-bd.xhscdn.com/notes_pre_post"
 
 
 def test_repeated_mapping_is_deterministic() -> None:
     """相同输入重复映射得到完全相同的 canonical 输出。"""
-    source = detail(image_urls=["https://example.invalid/a.jpg", "https://example.invalid/b.png"])
+    source = detail(
+        image_urls=["https://example.invalid/a.jpg", "https://example.invalid/b.png"]
+    )
     first = collection_feed_detail_to_work_detail(source, item())
     second = collection_feed_detail_to_work_detail(source, item())
     assert first == second
-    assert first.published_at == datetime.fromtimestamp(
-        1_700_000_000, tz=UTC
-    )
+    assert first.published_at == datetime.fromtimestamp(1_700_000_000, tz=UTC)
 
 
 def test_mapper_output_has_no_secret_adjacent_fields() -> None:

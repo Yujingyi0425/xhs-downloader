@@ -1,7 +1,9 @@
 """收藏条目详情 enrichment 的非敏感领域模型。"""
 
+import re
 from datetime import UTC, datetime
 from enum import StrEnum
+from urllib.parse import unquote, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -21,6 +23,7 @@ class CollectionEnrichmentStatus(StrEnum):
 
 
 ENRICHMENT_VERSION = 1
+_EPHEMERAL_IMAGE_ROUTE = re.compile(r"^\d{12}/[0-9a-f]{32}/", re.IGNORECASE)
 TERMINAL_ENRICHMENT_STATUSES = frozenset(
     {
         CollectionEnrichmentStatus.SUCCEEDED,
@@ -73,12 +76,37 @@ class CollectionFeedDetail(BaseModel):
             note_type=detail.note_type,
             author=detail.author,
             metrics=detail.metrics,
-            image_urls=[str(url) for url in detail.image_urls],
+            image_urls=[
+                normalize_collection_image_url(str(url)) for url in detail.image_urls
+            ],
             published_at=detail.published_at,
             ip_location=detail.ip_location,
             comments=detail.comments,
             comments_has_more=detail.comments_has_more,
         )
+
+
+def normalize_collection_image_url(value: str) -> str:
+    """把小红书临时图片路由转换为可下载的稳定图片地址。
+
+    收藏 enrichment 可能来自旧版扩展，旧版会持久化带时间戳和签名摘要的
+    ``sns-webpic`` 地址；这些地址在服务端下载时会返回 403。仅对已知的小红书
+    临时图片域名做转换，其他 URL 保持原值，避免改变通用媒体语义。
+
+    Args:
+        value: 页面或历史 enrichment 中的图片地址。
+
+    Returns:
+        可供服务端下载的稳定图片地址。
+    """
+    decoded = unquote(value)
+    parsed = urlsplit(decoded)
+    hostname = (parsed.hostname or "").lower()
+    if not (hostname.startswith("sns-webpic-") and hostname.endswith(".xhscdn.com")):
+        return decoded
+    path = parsed.path.lstrip("/")
+    stable_path = _EPHEMERAL_IMAGE_ROUTE.sub("", path, count=1).partition("!")[0]
+    return f"https://sns-img-bd.xhscdn.com/{stable_path}"
 
 
 class CollectionFeedEnrichment(BaseModel):
