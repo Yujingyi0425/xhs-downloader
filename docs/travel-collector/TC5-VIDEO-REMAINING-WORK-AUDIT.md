@@ -4,8 +4,8 @@
 
 - `VIDEO_CURRENT_IMPLEMENTATION_STATUS=IMPLEMENTED_BUT_RUNTIME_BLOCKED`
 - `VIDEO_LAST_PROVEN_RUNTIME_BOUNDARY=GET_FEED_MEDIA_BROWSER_DETAIL_NAVIGATION`
-- `VIDEO_KNOWN_BLOCKERS=当前 Chrome 已加载 worker 未刷新；两次真实 canary 在同一 feed 身份已匹配但 tab 仍 loading 时返回 DETAIL_NAVIGATION_FAILED`
-- `R4E_CURRENT_STATUS=SOURCE_REPAIR_PASS_RUNTIME_EFFECT_UNPROVEN`
+- `VIDEO_KNOWN_BLOCKERS=目标详情 URL 已匹配但 tab 长时间保持 loading；当前修复尚未重新 canary 验证`
+- `R4E_CURRENT_STATUS=SOURCE_REPAIR_PASS_SECOND_BOUNDARY_FIX_RUNTIME_EFFECT_UNPROVEN`
 - `VIDEO_PERMISSION_STATUS=SOURCE_HOST_PERMISSION_PRESENT_RUNTIME_ATTESTATION_UNPROVEN`
 - `VIDEO_SECRET_SAFETY_STATUS=PASS_FOR_NEW_PIPELINE; historical failed browser task payloads remain outside new extraction records`
 
@@ -24,7 +24,7 @@
 
 ## 最短 closure 路线
 
-1. 让当前 Chrome 扩展实例加载包含 `tab.url` loading grace 修复的新构建。
+1. 让当前 Chrome 扩展实例加载包含“目标 URL 已匹配即可进入页面执行器”修复的新构建。
 2. 仅重跑一个代表性视频 canary，确认下载 artifact、PyAV 音频、CPU faster-whisper、关键帧 OCR、canonical extraction persistence 和重启读回。
 3. 若单条闭环通过，再按 bounded batch/idempotency 回填视频；若仍失败，只修复新的第一失败边界。
 

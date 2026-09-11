@@ -98,6 +98,7 @@ export async function waitForMediaDetailPage(
           creationObservation,
         );
       }
+      if (hasExpectedLoadingDetail(tab, feedId)) return;
     }
     await delay(DETAIL_READY_INTERVAL_MS);
   }
@@ -114,6 +115,14 @@ function hasExpectedPendingDetail(tab: chrome.tabs.Tab, feedId: string): boolean
     [tab.url, tab.pendingUrl].some(
       (value) => typeof value === "string" && isSupportedDetailPageForFeed(value, feedId),
     )
+  );
+}
+
+function hasExpectedLoadingDetail(tab: chrome.tabs.Tab, feedId: string): boolean {
+  return (
+    tab.status === "loading" &&
+    typeof tab.url === "string" &&
+    isSupportedDetailPageForFeed(tab.url, feedId)
   );
 }
 

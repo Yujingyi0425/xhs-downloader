@@ -185,6 +185,30 @@ describe("GET_FEED_MEDIA 后台执行边界", () => {
     });
   }, 10_000);
 
+  it("目标详情 URL 已匹配时允许 loading 页面进入页面执行器", async () => {
+    const expectedUrl =
+      "https://www.xiaohongshu.com/explore/synthetic-feed?xsec_token=synthetic-token";
+    vi.mocked(chrome.tabs.get).mockResolvedValue({
+      id: 8,
+      status: "loading",
+      url: expectedUrl,
+    } as never);
+    const fetchMock = serviceResponses(
+      claim("get_feed_media", {
+        feed_id: "synthetic-feed",
+        xsec_token: "synthetic-token",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await runBrowserTaskPoll();
+
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      status: "succeeded",
+      result: { note_type: "video" },
+    });
+  }, 10_000);
+
   it("预期 pendingUrl 永不提交时在新上限失败", async () => {
     vi.mocked(chrome.tabs.get).mockResolvedValue({
       id: 8,

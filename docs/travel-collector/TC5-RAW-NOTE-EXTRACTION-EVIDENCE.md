@@ -19,10 +19,9 @@
 
 ## 视频剩余边界
 
-- `VIDEO_ACQUISITION_RUNTIME=BLOCKED_AT_DETAIL_NAVIGATION`：已执行两次有界代表性真实视频 canary，安全遥测均为同一 feed 详情 URL 已匹配、标签仍为 loading，未进入视频下载、音频、ASR 或关键帧阶段。
-- 源码已修复该边界：loading 期间同时接受 `tab.url` 或 `pendingUrl` 的同 feed 详情身份；扩展边界测试通过。
-- 当前 Chrome 已加载的扩展实例未能通过受控浏览器接口刷新内部扩展管理页，因此第二次真实 canary 仍运行旧的已加载 worker；不能将它误报为视频成功。
-- `VIDEO_RAW_EXTRACTION_PRODUCT_READY=NO`，待扩展实例加载新构建后仅需重跑一个 canary，再决定是否进入批处理。
+- `VIDEO_ACQUISITION_RUNTIME=BLOCKED_AT_DETAIL_NAVIGATION`：reload 后的 bounded canary 已确认新 worker 生效，`tab.url` 已匹配目标 `/explore/<feed_id>`，但标签页在约 10 秒后仍为 `loading`，未进入视频下载、音频、ASR 或关键帧阶段。
+- 新的最小修复已完成：目标 URL 已匹配时允许 loading 页面进入页面执行器；9 个媒体运行边界测试、typecheck、lint、build 均通过。
+- `VIDEO_RAW_EXTRACTION_PRODUCT_READY=NO`，需要加载该最新构建后再执行一个 canary，不能将当前失败误报为视频成功。
 
 ## 安全验收
 
