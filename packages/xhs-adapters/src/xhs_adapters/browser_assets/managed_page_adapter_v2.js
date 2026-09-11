@@ -145,13 +145,25 @@
     ];
   }
   function selectVideoStream(video) {
-    const streams = [
-      ...list(deepGet(video, "media.stream.h264")),
-      ...list(deepGet(video, "media.stream.h265"))
-    ];
+    const streams = videoStreamVariants(video);
     const selected = streams.sort((left, right) => number(right.height) - number(left.height))[0];
     const backups = Array.isArray(selected?.backupUrls) ? selected.backupUrls : [];
-    return backups.find((item) => typeof item === "string" && !!item) ?? text(selected?.masterUrl);
+    return backups.find((item) => typeof item === "string" && !!item) || text(selected?.masterUrl) || text(selected?.url) || text(selected?.playUrl) || text(selected?.downloadUrl);
+  }
+  function videoStreamVariants(video) {
+    const stream = object(deepGet(video, "media.stream"));
+    const direct = hasVideoLocatorFields(stream) ? [stream] : [];
+    const nested = Object.values(stream).flatMap((value) => {
+      if (Array.isArray(value)) return value.map(object).filter(hasVideoLocatorFields);
+      const candidate = object(value);
+      return hasVideoLocatorFields(candidate) ? [candidate] : [];
+    });
+    return [...direct, ...nested];
+  }
+  function hasVideoLocatorFields(value) {
+    return ["masterUrl", "url", "playUrl", "downloadUrl"].some(
+      (field) => text(value[field])
+    ) || Array.isArray(value.backupUrls);
   }
   function parseImages(images) {
     return images.flatMap((image, position) => {
@@ -200,7 +212,7 @@
     const video = object(rawVideo);
     const media = object(video.media);
     const stream = object(media.stream);
-    const variants = [...list(stream.h264), ...list(stream.h265)];
+    const variants = videoStreamVariants(video);
     const consumer = object(video.consumer);
     const knownFields = ["url", "src", "playAddr", "downloadAddr", "originVideoKey"].some(
       (field) => text(video[field]) || text(consumer[field])

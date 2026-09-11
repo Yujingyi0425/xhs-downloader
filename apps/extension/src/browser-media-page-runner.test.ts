@@ -94,6 +94,43 @@ describe("GET_FEED_MEDIA 页面执行边界", () => {
     }
   });
 
+  it("兼容 codec 名称变化及单对象视频流", async () => {
+    const page = statePage({
+      note: {
+        noteDetailMap: {
+          "synthetic-feed": {
+            note: {
+              noteId: "synthetic-feed",
+              type: "video",
+              video: {
+                media: {
+                  stream: {
+                    avc: {
+                      masterUrl: "https://example.invalid/codec-change.mp4",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const response = await executeBrowserPageTask(
+      task("get_feed_media", { feed_id: "synthetic-feed" }),
+      page,
+      "https://www.xiaohongshu.com/explore/synthetic-feed",
+    );
+
+    expect(response).toMatchObject({
+      ok: true,
+      result: {
+        media: [{ kind: "video", url: "https://example.invalid/codec-change.mp4" }],
+      },
+    });
+  });
+
   it("实时状态没有媒体时保持 fail closed", async () => {
     const page = document;
     page.body.innerHTML = "";

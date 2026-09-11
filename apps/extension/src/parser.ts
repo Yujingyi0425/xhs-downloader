@@ -117,16 +117,33 @@ export function parseVideo(video: DataMap, images: DataMap[]): ExtensionMedia[] 
 }
 
 export function selectVideoStream(video: DataMap): string {
-  const streams = [
-    ...list(deepGet(video, "media.stream.h264")),
-    ...list(deepGet(video, "media.stream.h265")),
-  ];
+  const streams = videoStreamVariants(video);
   const selected = streams.sort((left, right) => number(right.height) - number(left.height))[0];
   const backups = Array.isArray(selected?.backupUrls) ? selected.backupUrls : [];
   return (
-    backups.find((item): item is string => typeof item === "string" && !!item) ??
-    text(selected?.masterUrl)
+    backups.find((item): item is string => typeof item === "string" && !!item) ||
+    text(selected?.masterUrl) ||
+    text(selected?.url) ||
+    text(selected?.playUrl) ||
+    text(selected?.downloadUrl)
   );
+}
+
+function videoStreamVariants(video: DataMap): DataMap[] {
+  const stream = object(deepGet(video, "media.stream"));
+  const direct = hasVideoLocatorFields(stream) ? [stream] : [];
+  const nested = Object.values(stream).flatMap((value) => {
+    if (Array.isArray(value)) return value.map(object).filter(hasVideoLocatorFields);
+    const candidate = object(value);
+    return hasVideoLocatorFields(candidate) ? [candidate] : [];
+  });
+  return [...direct, ...nested];
+}
+
+function hasVideoLocatorFields(value: DataMap): boolean {
+  return ["masterUrl", "url", "playUrl", "downloadUrl"].some(
+    (field) => text(value[field]),
+  ) || Array.isArray(value.backupUrls);
 }
 
 function parseImages(images: DataMap[]): ExtensionMedia[] {
@@ -185,7 +202,7 @@ export function inspectInitialStateVideo(
   const video = object(rawVideo);
   const media = object(video.media);
   const stream = object(media.stream);
-  const variants = [...list(stream.h264), ...list(stream.h265)];
+  const variants = videoStreamVariants(video);
   const consumer = object(video.consumer);
   const knownFields = ["url", "src", "playAddr", "downloadAddr", "originVideoKey"].some(
     (field) => text(video[field]) || text(consumer[field]),
