@@ -24,6 +24,13 @@ export function parseCurrentDocument(page: Document, sourceUrl: string): Extensi
 
 export function parseInitialStateScript(script: string, sourceUrl: string): ExtensionWork {
   const state = parseInitialStateValue(script);
+  return parseInitialStateRecord(state, sourceUrl);
+}
+
+export function parseInitialStateRecord(
+  state: Record<string, unknown>,
+  sourceUrl: string,
+): ExtensionWork {
   const workId = workIdFromUrl(sourceUrl);
   const note = selectNote(state, workId);
   const resolvedWorkId = text(note.noteId) || workId;

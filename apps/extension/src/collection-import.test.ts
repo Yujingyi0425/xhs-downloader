@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createCollectionImportObservation } from "./collection-import-orchestration";
+import { createCollectionImportObservation, sendNoteExtraction } from "./collection-import-orchestration";
 import { importCollection, CollectionImportUnauthorizedError } from "./collection-import-service";
 import { senderMatchesBoard } from "./collection-import-runner";
 import type { CollectionCaptureResult } from "./collection-controller";
+import type { CollectionImportResult } from "./collection-import-types";
 
 const xsecSentinel = "synthetic-xsec-secret-never-leak";
 const capabilitySentinel = "synthetic-extension-capability-never-leak";
@@ -116,6 +117,35 @@ describe("TC2B3 collection import contract", () => {
     const observation = createCollectionImportObservation(capture(1));
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 401)));
     await expect(importCollection("http://service", credential, observation.payload)).rejects.toBeInstanceOf(CollectionImportUnauthorizedError);
+  });
+
+  it("starts raw extraction with only snapshot identity", async () => {
+    const imported = saved("request", 1) as CollectionImportResult;
+    const fetchMock = vi.fn().mockResolvedValue(response({ job_status: "started" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(sendNoteExtraction(imported)).resolves.toMatchObject({
+      ok: true,
+      job_status: "started",
+    });
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toContain("/snapshots/snapshot-1/extractions/process");
+    expect(JSON.parse(init.body as string)).toEqual({ retry_failed: true });
+  });
+
+  it("hides raw extraction HTTP and network failures", async () => {
+    const imported = saved("request", 1) as CollectionImportResult;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response({}, 503)));
+    await expect(sendNoteExtraction(imported)).resolves.toMatchObject({
+      ok: false,
+      message: "原始抽取未启动",
+    });
+
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network")));
+    await expect(sendNoteExtraction(imported)).resolves.toMatchObject({
+      ok: false,
+      message: "原始抽取启动失败，请检查本地服务",
+    });
   });
 
   it("requires the sender to be the current board page", () => {

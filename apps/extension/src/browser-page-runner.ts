@@ -121,7 +121,7 @@ export async function executeBrowserPageTask(
     const feedId = payloadText(task, "feed_id");
     return success(
       "帖子视频媒体读取完成",
-      parseFeedMediaDocument(page, feedId, pageUrl),
+      await parseFeedMediaDocument(page, feedId, pageUrl),
     );
   }
   if (task.kind === "get_user_profile") {

@@ -14,13 +14,13 @@
 - `IMAGE_MVP_MILESTONE_FROZEN=YES`：图片 pipeline 在本证据之后不再修改。
 - 最新快照回读：64 条记录，其中图片 33 条、视频 31 条；图片 artifact 271 个。
 - 图片 OCR 回读：271 条，其中 `SUCCESS=208`、`NO_TEXT=63`、`FAILED=0`；重启后记录可读且幂等。
-- Python 全量测试、Ruff、Extension typecheck、lint、build、安全回归均通过。
+- Python 全量测试、Ruff、Extension 全量测试（461 passed）、typecheck、lint、build、安全回归通过；Extension coverage 分支门槛当前为 `83.75% < 85%`，因此带 coverage 的脚本退出失败，未伪装为通过。
 - 实际图片文件仍在本机 `volume/download`；抽取记录在本机 `volume/.xhs-downloader/downloads.db`，不进入 Git。
 
 ## 视频剩余边界
 
-- `VIDEO_ACQUISITION_RUNTIME=BLOCKED_AT_DETAIL_NAVIGATION`：reload 后的 bounded canary 已确认新 worker 生效，`tab.url` 已匹配目标 `/explore/<feed_id>`，但标签页在约 10 秒后仍为 `loading`，未进入视频下载、音频、ASR 或关键帧阶段。
-- 新的最小修复已完成：目标 URL 已匹配时允许 loading 页面进入页面执行器；9 个媒体运行边界测试、typecheck、lint、build 均通过。
+- `VIDEO_ACQUISITION_RUNTIME=BLOCKED_AT_MEDIA_PARSER`：reload 后的 bounded canary 已跨过 detail navigation，浏览器任务成功返回，但页面结果为 `note_type=unknown`、`media_count=0`，未产生可下载视频 locator。
+- 新的最小修复已完成：静态状态无媒体时回读主世界实时状态；Extension 全量测试 461 passed，lint、typecheck、build 均通过。
 - `VIDEO_RAW_EXTRACTION_PRODUCT_READY=NO`，需要加载该最新构建后再执行一个 canary，不能将当前失败误报为视频成功。
 
 ## 安全验收
