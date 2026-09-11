@@ -1,6 +1,7 @@
 import type { FeedComment, FeedDetailResult } from "@xhs-downloader/contracts";
 
 import { parseFeedAuthor, parseFeedMetrics } from "./feed-parser";
+import { normalizeFeedImageUrl } from "./parser";
 import {
   dataBoolean,
   dataInteger,
@@ -174,7 +175,8 @@ export function parseFeedDetailDocumentWithTelemetry(
       image_urls: dataList(note.imageList)
         .map((item) => {
           const image = dataRecord(item);
-          return dataUrl(image.urlDefault ?? image.urlPre ?? image.url);
+          const url = dataUrl(image.urlDefault ?? image.urlPre ?? image.url);
+          return url ? normalizeFeedImageUrl(url) : null;
         })
         .filter((url): url is string => url !== null)
         .slice(0, 100),

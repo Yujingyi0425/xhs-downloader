@@ -151,6 +151,23 @@ function stableImageUrl(value: string): string {
   return `https://sns-img-bd.xhscdn.com/${path}`;
 }
 
+/** 将详情页直接暴露的 webpic 地址转换为可下载的稳定图像地址。 */
+export function normalizeFeedImageUrl(value: string): string {
+  try {
+    const decoded = decodeUrl(value);
+    const parsed = new URL(decoded);
+    if (
+      parsed.hostname.startsWith("sns-webpic-") &&
+      parsed.hostname.endsWith(".xhscdn.com")
+    ) {
+      return stableImageUrl(decoded);
+    }
+    return parsed.toString();
+  } catch {
+    return value;
+  }
+}
+
 function imageSuffix(value: string): string {
   const match = decodeUrl(value).match(/_(avif|heic|jpeg|jpg|png|webp)(?:_|$)/i);
   const suffix = match?.[1]?.toLowerCase();

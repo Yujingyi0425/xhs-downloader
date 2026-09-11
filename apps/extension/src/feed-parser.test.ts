@@ -180,6 +180,48 @@ describe("浏览结果解析器", () => {
     });
   });
 
+  it("把详情页 webpic 图像地址归一化为可下载地址", () => {
+    const page = pageWithState({
+      note: {
+        noteDetailMap: {
+          [FEED_ID]: {
+            note: {
+              noteId: FEED_ID,
+              type: "normal",
+              title: "合成详情",
+              desc: "合成正文",
+              user: {
+                userId: "synthetic-author",
+                nickname: "合成作者",
+              },
+              interactInfo: {},
+              imageList: [
+                {
+                  urlDefault:
+                    "https://sns-webpic-qc.xhscdn.com/202609111039/" +
+                    "5f281b37cbabeda9470821658e7921e3/" +
+                    "1040g0083247f5vdd72005nv5mplg9a7vqquiqhg!nd_dft_wlteh_webp_3",
+                },
+              ],
+            },
+          },
+        },
+      },
+    });
+
+    const detail = parseFeedDetailDocument(page, {
+      feedId: FEED_ID,
+      xsecToken: "requested-token",
+      commentLimit: 0,
+      includeReplies: false,
+      replyLimit: 0,
+    });
+
+    expect(detail.image_urls).toEqual([
+      "https://sns-img-bd.xhscdn.com/1040g0083247f5vdd72005nv5mplg9a7vqquiqhg",
+    ]);
+  });
+
   it("解析用户资料、统计项和双层帖子数组", () => {
     const profile = parseUserProfileDocument(
       pageWithState({
