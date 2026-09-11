@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { executeBrowserPageTask } from "./browser-page-runner";
 import { installBrowserStateBridge } from "./browser-state-main";
 import { pageTask as task, statePage } from "./browser-page-test-helpers";
+import { FeedMediaParserError, parseFeedMediaDocument } from "./feed-media-parser";
 
 describe("GET_FEED_MEDIA 页面执行边界", () => {
   it("在详情页读取视频 locator，并对空媒体 fail closed", async () => {
@@ -116,5 +117,76 @@ describe("GET_FEED_MEDIA 页面执行边界", () => {
     } finally {
       uninstall();
     }
+  });
+
+  it("状态 schema 为空时从同一详情页的 video currentSrc 读取视频", async () => {
+    const page = document.implementation.createHTMLDocument();
+    const video = page.createElement("video");
+    Object.defineProperty(video, "currentSrc", {
+      configurable: true,
+      value: "https://sns-video-bd.xhscdn.com/synthetic/video.mp4?signature=synthetic",
+    });
+    page.body.append(video);
+
+    const result = await parseFeedMediaDocument(
+      page,
+      "synthetic-feed",
+      "https://www.xiaohongshu.com/explore/synthetic-feed",
+    );
+
+    expect(result).toMatchObject({
+      note_type: "video",
+      media: [
+        {
+          kind: "video",
+          url: "https://sns-video-bd.xhscdn.com/synthetic/video.mp4?signature=synthetic",
+        },
+      ],
+    });
+  });
+
+  it("video 没有可下载地址时拒绝 blob 并返回脱敏结构诊断", async () => {
+    const page = document.implementation.createHTMLDocument();
+    const video = page.createElement("video");
+    video.src = "blob:https://www.xiaohongshu.com/synthetic-runtime-media";
+    page.body.append(video);
+
+    const error = await parseFeedMediaDocument(
+      page,
+      "synthetic-feed",
+      "https://www.xiaohongshu.com/explore/synthetic-feed",
+    ).catch((value: unknown) => value);
+
+    expect(error).toBeInstanceOf(FeedMediaParserError);
+    expect((error as FeedMediaParserError).diagnostics).toEqual(
+      expect.objectContaining({
+        video_element_count: 1,
+        video_src_present: "YES",
+        locator_candidate_source: "NONE",
+        locator_rejection_reason: "BLOB_ONLY_SOURCE",
+        signed_query_present: "NO",
+      }),
+    );
+    expect(JSON.stringify((error as FeedMediaParserError).diagnostics)).not.toContain("synthetic-runtime");
+  });
+
+  it("video 元素没有地址时可读取 source 元素的稳定视频地址", async () => {
+    const page = document.implementation.createHTMLDocument();
+    const video = page.createElement("video");
+    const source = page.createElement("source");
+    source.src = "https://sns-video-hw.xhscdn.com/synthetic/stream.m3u8";
+    video.append(source);
+    page.body.append(video);
+
+    const result = await parseFeedMediaDocument(
+      page,
+      "synthetic-feed",
+      "https://www.xiaohongshu.com/explore/synthetic-feed",
+    );
+
+    expect(result.media[0]).toMatchObject({
+      kind: "video",
+      url: "https://sns-video-hw.xhscdn.com/synthetic/stream.m3u8",
+    });
   });
 });

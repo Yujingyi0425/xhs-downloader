@@ -20,6 +20,7 @@ import { createCollectionPanel } from "./collection-panel";
 import { sendCollectionImages, sendCollectionImport, sendNoteExtraction } from "./collection-import-orchestration";
 import { shouldOpenCollectionPanel } from "./collection-action-routing";
 import { parserTelemetryFromError } from "./feed-detail-parser";
+import { feedMediaParserDiagnosticsFromError } from "./feed-media-parser";
 import { pageRuntimeTelemetryFromError, type PageRuntimeTelemetry } from "./browser-runtime-telemetry";
 
 const collectionPanel = createCollectionPanel(
@@ -72,6 +73,7 @@ chrome.runtime.onMessage.addListener(
       .catch((error: unknown) => {
         const failureCode = classifyPageTaskError(message.task.kind, error);
         const parserTelemetry = parserTelemetryFromError(error);
+        const mediaParserDiagnostics = feedMediaParserDiagnosticsFromError(error);
         const pageTelemetry = pageRuntimeTelemetry(pageRuntimeTelemetryFromError(error));
         sendResponse({
           ok: false,
@@ -88,6 +90,9 @@ chrome.runtime.onMessage.addListener(
             failure_class: classifyBrowserTaskFailure(failureCode),
             failure_stage: "page_parser",
             ...(parserTelemetry ? { parser_telemetry: parserTelemetry } : {}),
+            ...(mediaParserDiagnostics
+              ? { media_parser_diagnostics: mediaParserDiagnostics }
+              : {}),
           },
           page_runtime_telemetry: pageTelemetry,
         });

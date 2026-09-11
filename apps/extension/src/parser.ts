@@ -5,6 +5,13 @@ const EPHEMERAL_IMAGE_ROUTE = /^\d{12}\/[0-9a-f]{32}\//i;
 
 type DataMap = Record<string, unknown>;
 
+export interface InitialStateVideoInspection {
+  video_object_present: boolean;
+  video_keys_class: "EMPTY" | "CONSUMER" | "MEDIA" | "KNOWN_FIELDS" | "OTHER";
+  video_stream_object_present: boolean;
+  video_variant_count: number;
+}
+
 export function parseCurrentDocument(page: Document, sourceUrl: string): ExtensionWork {
   const scripts = [...page.scripts]
     .map((script) => script.textContent?.trim() ?? "")
@@ -156,6 +163,47 @@ function stableImageUrl(value: string): string {
     .replace(EPHEMERAL_IMAGE_ROUTE, "")
     .split("!", 1)[0];
   return `https://sns-img-bd.xhscdn.com/${path}`;
+}
+
+/** 仅返回视频结构类别和数量，不返回页面字段、地址或状态原文。 */
+export function inspectInitialStateVideo(
+  state: Record<string, unknown>,
+  sourceUrl: string,
+): InitialStateVideoInspection {
+  let note: DataMap;
+  try {
+    note = selectNote(state, workIdFromUrl(sourceUrl));
+  } catch {
+    return {
+      video_object_present: false,
+      video_keys_class: "EMPTY",
+      video_stream_object_present: false,
+      video_variant_count: 0,
+    };
+  }
+  const rawVideo = note.video;
+  const video = object(rawVideo);
+  const media = object(video.media);
+  const stream = object(media.stream);
+  const variants = [...list(stream.h264), ...list(stream.h265)];
+  const consumer = object(video.consumer);
+  const knownFields = ["url", "src", "playAddr", "downloadAddr", "originVideoKey"].some(
+    (field) => text(video[field]) || text(consumer[field]),
+  );
+  return {
+    video_object_present: hasKeys(video),
+    video_keys_class: !hasKeys(video)
+      ? "EMPTY"
+      : hasKeys(consumer)
+        ? "CONSUMER"
+        : hasKeys(media)
+          ? "MEDIA"
+          : knownFields
+            ? "KNOWN_FIELDS"
+            : "OTHER",
+    video_stream_object_present: hasKeys(stream),
+    video_variant_count: variants.length,
+  };
 }
 
 /** 将详情页直接暴露的 webpic 地址转换为可下载的稳定图像地址。 */

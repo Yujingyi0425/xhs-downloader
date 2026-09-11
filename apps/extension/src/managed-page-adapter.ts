@@ -8,6 +8,7 @@ import {
 import { UncertainBrowserActionError } from "./browser-action-errors";
 import { buildPageCompatibilityDiagnostics } from "./browser-page-diagnostics";
 import { executeBrowserPageTask, type BrowserPageTaskResponse } from "./browser-page-runner";
+import { feedMediaParserDiagnosticsFromError } from "./feed-media-parser";
 import { installBrowserStateBridge } from "./browser-state-main";
 import {
   prepareDesiredInteraction,
@@ -172,11 +173,17 @@ function success(message: string, result: object): BrowserPageTaskResponse {
 }
 
 function failure(error: unknown, scope: AdapterScope): BrowserPageTaskResponse {
+  const mediaParserDiagnostics = feedMediaParserDiagnosticsFromError(error);
   return {
     ok: false,
     message: error instanceof Error ? error.message : "页面数据解析失败",
     status: error instanceof UncertainBrowserActionError ? "needs_review" : "failed",
-    result: buildPageCompatibilityDiagnostics(scope.document, scope.location.href),
+    result: {
+      ...buildPageCompatibilityDiagnostics(scope.document, scope.location.href),
+      ...(mediaParserDiagnostics
+        ? { media_parser_diagnostics: mediaParserDiagnostics }
+        : {}),
+    },
   };
 }
 
