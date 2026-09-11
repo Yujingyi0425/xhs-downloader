@@ -150,7 +150,6 @@ function stateRejectionFromInspection(
   }
   return inspection.video_variant_count ? "UNKNOWN" : "STREAM_VARIANTS_EMPTY";
 }
-
 function findDomVideoCandidate(page: Document): {
   result?: { url: string; source: MediaLocatorSource };
   videoElementCount: number;
@@ -226,7 +225,6 @@ function findDomVideoCandidate(page: Document): {
     rejection,
   };
 }
-
 function buildDiagnostics(
   page: Document,
   state: InitialStateVideoInspection,

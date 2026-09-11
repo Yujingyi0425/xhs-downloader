@@ -2,7 +2,6 @@ import type { ExtensionMedia, ExtensionWork } from "./types";
 
 const INITIAL_STATE_PREFIX = "window.__INITIAL_STATE__";
 const EPHEMERAL_IMAGE_ROUTE = /^\d{12}\/[0-9a-f]{32}\//i;
-
 type DataMap = Record<string, unknown>;
 
 export interface InitialStateVideoInspection {
@@ -11,7 +10,6 @@ export interface InitialStateVideoInspection {
   video_stream_object_present: boolean;
   video_variant_count: number;
 }
-
 export function parseCurrentDocument(page: Document, sourceUrl: string): ExtensionWork {
   const scripts = [...page.scripts]
     .map((script) => script.textContent?.trim() ?? "")
@@ -28,12 +26,10 @@ export function parseCurrentDocument(page: Document, sourceUrl: string): Extensi
   }
   throw latestError;
 }
-
 export function parseInitialStateScript(script: string, sourceUrl: string): ExtensionWork {
   const state = parseInitialStateValue(script);
   return parseInitialStateRecord(state, sourceUrl);
 }
-
 export function parseInitialStateRecord(
   state: Record<string, unknown>,
   sourceUrl: string,
@@ -58,7 +54,6 @@ export function parseInitialStateRecord(
     media,
   };
 }
-
 /** 解析页面内嵌的 ``window.__INITIAL_STATE__`` 对象。 */
 export function parseInitialStateValue(script: string): Record<string, unknown> {
   const separator = script.indexOf("=");
@@ -78,7 +73,6 @@ export function parseInitialStateValue(script: string): Record<string, unknown> 
   }
   return state;
 }
-
 function selectNote(state: DataMap, workId: string): DataMap {
   const noteMap = object(deepGet(state, "note.noteDetailMap"));
   const direct = object(noteMap[workId]);
@@ -95,11 +89,9 @@ function selectNote(state: DataMap, workId: string): DataMap {
   }
   throw new Error("当前页面没有可解析的帖子数据");
 }
-
 function noteMatches(note: DataMap, workId: string): boolean {
   return hasKeys(note) && text(note.noteId) === workId;
 }
-
 export function parseVideo(video: DataMap, images: DataMap[]): ExtensionMedia[] {
   const originKey = text(deepGet(video, "consumer.originVideoKey"));
   const url = originKey ? `https://sns-video-bd.xhscdn.com/${originKey}` : selectVideoStream(video);
@@ -115,37 +107,28 @@ export function parseVideo(video: DataMap, images: DataMap[]): ExtensionMedia[] 
     },
   ];
 }
-
 export function selectVideoStream(video: DataMap): string {
   const streams = videoStreamVariants(video);
   const selected = streams.sort((left, right) => number(right.height) - number(left.height))[0];
   const backups = Array.isArray(selected?.backupUrls) ? selected.backupUrls : [];
-  return (
-    backups.find((item): item is string => typeof item === "string" && !!item) ||
-    text(selected?.masterUrl) ||
-    text(selected?.url) ||
-    text(selected?.playUrl) ||
-    text(selected?.downloadUrl)
-  );
+  const fallback = ["masterUrl", "url", "playUrl", "downloadUrl"]
+    .map((field) => text(selected?.[field])).find(Boolean);
+  return backups.find((item): item is string => typeof item === "string" && !!item) || fallback || "";
 }
-
 function videoStreamVariants(video: DataMap): DataMap[] {
   const stream = object(deepGet(video, "media.stream"));
-  const direct = hasVideoLocatorFields(stream) ? [stream] : [];
-  const nested = Object.values(stream).flatMap((value) => {
-    if (Array.isArray(value)) return value.map(object).filter(hasVideoLocatorFields);
-    const candidate = object(value);
-    return hasVideoLocatorFields(candidate) ? [candidate] : [];
-  });
-  return [...direct, ...nested];
+  return [
+    ...(hasVideoLocatorFields(stream) ? [stream] : []),
+    ...Object.values(stream).flatMap((value) =>
+      Array.isArray(value)
+        ? value.map(object).filter(hasVideoLocatorFields)
+        : [object(value)].filter(hasVideoLocatorFields),
+    ),
+  ];
 }
-
 function hasVideoLocatorFields(value: DataMap): boolean {
-  return ["masterUrl", "url", "playUrl", "downloadUrl"].some(
-    (field) => text(value[field]),
-  ) || Array.isArray(value.backupUrls);
+  return ["masterUrl", "url", "playUrl", "downloadUrl"].some((field) => text(value[field])) || Array.isArray(value.backupUrls);
 }
-
 function parseImages(images: DataMap[]): ExtensionMedia[] {
   return images.flatMap((image, position) => {
     const index = position + 1;
@@ -172,7 +155,6 @@ function parseImages(images: DataMap[]): ExtensionMedia[] {
     return result;
   });
 }
-
 function stableImageUrl(value: string): string {
   const parsed = new URL(decodeUrl(value));
   const path = parsed.pathname
@@ -181,7 +163,6 @@ function stableImageUrl(value: string): string {
     .split("!", 1)[0];
   return `https://sns-img-bd.xhscdn.com/${path}`;
 }
-
 /** 仅返回视频结构类别和数量，不返回页面字段、地址或状态原文。 */
 export function inspectInitialStateVideo(
   state: Record<string, unknown>,
@@ -222,7 +203,6 @@ export function inspectInitialStateVideo(
     video_variant_count: variants.length,
   };
 }
-
 /** 将详情页直接暴露的 webpic 地址转换为可下载的稳定图像地址。 */
 export function normalizeFeedImageUrl(value: string): string {
   try {
@@ -239,13 +219,11 @@ export function normalizeFeedImageUrl(value: string): string {
     return value;
   }
 }
-
 function imageSuffix(value: string): string {
   const match = decodeUrl(value).match(/_(avif|heic|jpeg|jpg|png|webp)(?:_|$)/i);
   const suffix = match?.[1]?.toLowerCase();
   return suffix === "jpg" ? "jpeg" : suffix || "jpeg";
 }
-
 function normalizeJavaScriptValue(value: string): string {
   let result = "";
   let quote = "";

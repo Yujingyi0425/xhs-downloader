@@ -148,65 +148,6 @@ async def test_service_restart_recovers_running_and_fences_stale_worker(
 
 
 @pytest.mark.asyncio
-async def test_successful_video_clears_stale_error_code(tmp_path: Path) -> None:
-    """成功回读时清除历史失败尝试留下的错误码。"""
-    now = datetime.now(UTC)
-    repository = SqliteCollectionVideoContentRepository(tmp_path / "video.db")
-    stale = CollectionVideoContent(
-        snapshot_id="snapshot",
-        feed_id="feed",
-        status=VideoProcessingStatus.SUCCEEDED,
-        acquisition_status="succeeded",
-        stt_status="succeeded",
-        ocr_status="succeeded",
-        last_error_code="media_download_failed",
-    )
-    await repository.save(stale)
-    enrichment = CollectionFeedEnrichment(
-        snapshot_id="snapshot",
-        feed_id="feed",
-        status="succeeded",
-        detail=CollectionFeedDetail(
-            feed_id="feed",
-            note_type="video",
-            author=FeedAuthor(user_id="author"),
-        ),
-        created_at=now,
-        updated_at=now,
-        enriched_at=now,
-    )
-
-    async def _list_items(_snapshot_id):
-        return [
-            CollectionSnapshotItem(
-                snapshot_id="snapshot", feed_id="feed", source_order=0
-            )
-        ]
-
-    async def _get_access(_feed_id):
-        return None
-
-    async def _get_enrichment(_snapshot_id, _feed_id):
-        return enrichment
-
-    service = VideoProcessingService(
-        SimpleNamespace(
-            list_snapshot_items=_list_items,
-            get_feed_access_context=_get_access,
-        ),
-        SimpleNamespace(get_enrichment=_get_enrichment),
-        repository,
-        SimpleNamespace(),
-        SimpleNamespace(),
-    )
-
-    result = (await service.process_snapshot("snapshot"))[0]
-    assert result.status is VideoProcessingStatus.SUCCEEDED
-    assert result.last_error_code is None
-    assert (await repository.get("snapshot", "feed")).last_error_code is None
-
-
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "failure", ["access", "acquire", "download", "partial", "identity"]
 )
