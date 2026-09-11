@@ -17,7 +17,7 @@ import {
 import { requestBrowserInteraction } from "./browser-interaction-input";
 import { CollectionCaptureController } from "./collection-controller";
 import { createCollectionPanel } from "./collection-panel";
-import { sendCollectionImportAndProcess } from "./collection-import-orchestration";
+import { sendCollectionImages, sendCollectionImport } from "./collection-import-orchestration";
 import { shouldOpenCollectionPanel } from "./collection-action-routing";
 import { parserTelemetryFromError } from "./feed-detail-parser";
 import { pageRuntimeTelemetryFromError, type PageRuntimeTelemetry } from "./browser-runtime-telemetry";
@@ -36,7 +36,8 @@ const collectionPanel = createCollectionPanel(
       } | null,
       onProgress,
     }),
-  sendCollectionImportAndProcess,
+  (observation) => sendCollectionImport(observation.payload),
+  sendCollectionImages,
 );
 
 chrome.runtime.onMessage.addListener(

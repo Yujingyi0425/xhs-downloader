@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCollectionPanel } from "./collection-panel";
 import type { CollectionCaptureController, CollectionCaptureResult } from "./collection-controller";
-import type { CollectionImportObservation, CollectionImportResponse } from "./collection-import-types";
+import type { CollectionImageProcessResponse, CollectionImportObservation, CollectionImportResponse } from "./collection-import-types";
 
 function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
   let resolve!: (value: T) => void;
@@ -150,33 +150,92 @@ describe("TC1C-R1 collection panel lifecycle", () => {
     await Promise.resolve();
     expect(onImport).toHaveBeenCalledTimes(2);
     expect(observations[1].requestId).toBe(firstRequestId);
-    expect(root.querySelector("[data-status]")?.textContent).toBe("已保存到本地服务");
+    expect(root.querySelector("[data-status]")?.textContent).toBe("已保存，请选择要处理的收藏");
   });
 
-  it("shows image production counts and deferred video state", async () => {
+  it("shows image production counts and deferred video state after processing selected items", async () => {
     const scan = deferred<CollectionCaptureResult>();
-    const onImport = vi.fn(async (observation: CollectionImportObservation): Promise<CollectionImportResponse> => ({
+    const onImport = vi.fn(async (observation: CollectionImportObservation): Promise<CollectionImportResponse> => ({ ok: true, message: "收藏夹已保存", result: { snapshot_id: "s", source_type: "board", board_id: "synthetic-board", board_revision: 1, request_id: observation.requestId, captured_at: "2026-01-01T00:00:00Z", item_count: 1, fingerprint: "f", status: "saved", diff: { added: [], removed: [], retained: [] } } }));
+    const onProcess = vi.fn(async (): Promise<CollectionImageProcessResponse> => ({
       ok: true,
-      message: "收藏夹已保存，图片处理完成",
+      message: "图片处理完成",
       result: {
-        snapshot_id: "s", source_type: "board", board_id: "synthetic-board", board_revision: 1,
-        request_id: observation.requestId, captured_at: "2026-01-01T00:00:00Z", item_count: 1,
-        fingerprint: "f", status: "saved", diff: { added: [], removed: [], retained: [] },
-      },
-      processing: {
         snapshot_id: "s", status: "partial",
         items: [{ feed_id: "feed-1", source_order: 0, enrichment_status: "succeeded", media_status: "media_partial", image_count: 2, success_count: 1, failure_count: 1, video_deferred: true }],
       },
     }));
-    const panel = createCollectionPanel(document, () => fakeController(scan.promise, () => undefined), onImport);
+    const panel = createCollectionPanel(document, () => fakeController(scan.promise, () => undefined), onImport, onProcess);
     panel.toggle();
     const root = panel.getRootForTest();
     click(root, "[data-start]");
     scan.resolve(successfulResult());
     await Promise.resolve();
     await Promise.resolve();
-    expect(root.querySelector("[data-status]")?.textContent).toBe("已保存并完成图片处理");
-    expect(root.querySelector("[data-progress]")?.textContent).toContain("成功 1 张");
+    root.querySelector<HTMLInputElement>("[data-feed-id='feed-1']")!.click();
+    click(root, "[data-process-selected]");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onProcess).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ snapshot_id: "s" }), ["feed-1"]);
+    expect(root.querySelector("[data-status]")?.textContent).toBe("图片处理部分完成");
+    expect(root.querySelector("[data-progress]")?.textContent).toContain("1 张图片");
     expect(root.querySelector("[data-progress]")?.textContent).toContain("视频 1 条待处理");
+    expect(root.querySelector("[data-items]")?.textContent).toContain("视频待处理");
+  });
+
+  it("forwards one or more feed_id selections and blocks zero selection", async () => {
+    const scan = deferred<CollectionCaptureResult>();
+    const onImport = vi.fn(async (observation: CollectionImportObservation): Promise<CollectionImportResponse> => ({
+      ok: true, message: "收藏夹已保存", result: {
+        snapshot_id: "s", source_type: "board", board_id: "synthetic-board", board_revision: 1,
+        request_id: observation.requestId, captured_at: "2026-01-01T00:00:00Z", item_count: 3,
+        fingerprint: "f", status: "saved", diff: { added: [], removed: [], retained: [] },
+      },
+    }));
+    const onProcess = vi.fn(async (_observation: CollectionImportObservation, _imported, selectedFeedIds?: string[]): Promise<CollectionImageProcessResponse> => ({
+      ok: true, message: "图片处理完成", result: { snapshot_id: "s", status: "ready", items: (selectedFeedIds ?? []).map((feed_id, source_order) => ({ feed_id, source_order, enrichment_status: "succeeded", media_status: "media_succeeded", image_count: 1, success_count: 1, failure_count: 0, video_deferred: false })) },
+    }));
+    const panel = createCollectionPanel(document, () => fakeController(scan.promise, () => undefined), onImport, onProcess);
+    panel.toggle();
+    const root = panel.getRootForTest();
+    click(root, "[data-start]");
+    scan.resolve({ ...successfulResult(), uniqueCount: 3, items: new Map([
+      ["feed-a", { feedId: "feed-a", xsecToken: "token-a" }],
+      ["feed-b", { feedId: "feed-b", xsecToken: "token-b" }],
+      ["feed-c", { feedId: "feed-c", xsecToken: "token-c" }],
+    ]) });
+    await Promise.resolve();
+    await Promise.resolve();
+    click(root, "[data-process-selected]");
+    expect(root.querySelector("[data-status]")?.textContent).toBe("请先选择至少一条收藏");
+    expect(onProcess).not.toHaveBeenCalled();
+    root.querySelector<HTMLInputElement>("[data-feed-id='feed-a']")!.click();
+    root.querySelector<HTMLInputElement>("[data-feed-id='feed-c']")!.click();
+    click(root, "[data-process-selected]");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onProcess).toHaveBeenCalledWith(expect.anything(), expect.anything(), ["feed-a", "feed-c"]);
+  });
+
+  it("select all uses feed_id identity and repeated processing does not duplicate rows", async () => {
+    const scan = deferred<CollectionCaptureResult>();
+    const onImport = vi.fn(async (observation: CollectionImportObservation): Promise<CollectionImportResponse> => ({ ok: true, message: "收藏夹已保存", result: { snapshot_id: "s", source_type: "board", board_id: "synthetic-board", board_revision: 1, request_id: observation.requestId, captured_at: "2026-01-01T00:00:00Z", item_count: 2, fingerprint: "f", status: "saved", diff: { added: [], removed: [], retained: [] } } }));
+    const onProcess = vi.fn(async (_observation, _imported, selectedFeedIds?: string[]): Promise<CollectionImageProcessResponse> => ({ ok: true, message: "图片处理完成", result: { snapshot_id: "s", status: "ready", items: (selectedFeedIds ?? []).map((feed_id, source_order) => ({ feed_id, source_order, enrichment_status: "succeeded", media_status: "media_succeeded", image_count: 1, success_count: 1, failure_count: 0, video_deferred: false })) } }));
+    const panel = createCollectionPanel(document, () => fakeController(scan.promise, () => undefined), onImport, onProcess);
+    panel.toggle();
+    const root = panel.getRootForTest();
+    click(root, "[data-start]");
+    scan.resolve({ ...successfulResult(), uniqueCount: 2, items: new Map([["feed-a", { feedId: "feed-a", xsecToken: "token-a" }], ["feed-b", { feedId: "feed-b", xsecToken: "token-b" }]]) });
+    await Promise.resolve();
+    await Promise.resolve();
+    click(root, "[data-select-all]");
+    click(root, "[data-process-selected]");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onProcess).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), ["feed-a", "feed-b"]);
+    click(root, "[data-process-selected]");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onProcess).toHaveBeenCalledTimes(2);
+    expect(root.querySelectorAll(".collection-item")).toHaveLength(2);
   });
 });

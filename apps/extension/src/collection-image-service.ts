@@ -28,6 +28,7 @@ export async function processCollectionImages(
         body: JSON.stringify({
           board_id: payload.board_id,
           retry_failed: payload.retry_failed ?? false,
+          ...(payload.selected_feed_ids ? { selected_feed_ids: payload.selected_feed_ids } : {}),
         }),
       },
     );

@@ -51,6 +51,7 @@ export interface CollectionImageProcessPayload {
   snapshot_id: string;
   board_id: string;
   retry_failed?: boolean;
+  selected_feed_ids?: string[];
 }
 
 export interface CollectionImageItemResult {

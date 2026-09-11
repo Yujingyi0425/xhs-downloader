@@ -3,6 +3,7 @@ import {
   isSuccessfulCapture,
   type CollectionImportObservation,
   type CollectionImportPayload,
+  type CollectionImportResult,
   type CollectionImportResponse,
   type CollectionImageProcessResponse,
 } from "./collection-import-types";
@@ -51,37 +52,26 @@ export async function sendCollectionImport(
   }
 }
 
-/** 保存成功后立即启动图片生产，视频条目由服务端安全 deferred。 */
-export async function sendCollectionImportAndProcess(
+/** 对已保存快照启动图片生产；视频条目由服务端安全 deferred。 */
+export async function sendCollectionImages(
   observation: CollectionImportObservation,
-): Promise<CollectionImportResponse> {
-  const imported = await sendCollectionImport(observation.payload);
-  if (!imported.ok || !imported.result) return imported;
+  imported: CollectionImportResult,
+  selectedFeedIds?: string[],
+): Promise<CollectionImageProcessResponse> {
   try {
     const processed = await chrome.runtime.sendMessage(
       {
         type: "collection-image-process",
         payload: {
-          snapshot_id: imported.result.snapshot_id,
+          snapshot_id: imported.snapshot_id,
           board_id: observation.payload.board_id,
           retry_failed: true,
+          ...(selectedFeedIds ? { selected_feed_ids: selectedFeedIds } : {}),
         },
       },
     ) as CollectionImageProcessResponse | null;
-    if (!processed || !processed.ok || !processed.result) {
-      return {
-        ...imported,
-        ok: false,
-        message: processed?.message ?? "图片处理失败，请稍后重试",
-        kind: processed?.kind ?? "network",
-      };
-    }
-    return {
-      ...imported,
-      message: "收藏夹已保存，图片处理完成",
-      processing: processed.result,
-    };
+    return processed ?? { ok: false, message: "图片处理失败，请稍后重试", kind: "network" };
   } catch {
-    return { ...imported, ok: false, message: "图片处理失败，请稍后重试", kind: "network" };
+    return { ok: false, message: "图片处理失败，请稍后重试", kind: "network" };
   }
 }

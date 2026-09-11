@@ -2,24 +2,34 @@ import type { CollectionCaptureController, CollectionCaptureResult } from "./col
 import { sanitizeCollectionReason } from "./collection-controller";
 import { createCollectionImportObservation } from "./collection-import-orchestration";
 import type {
+  CollectionImageProcessResponse,
+  CollectionImageItemResult,
   CollectionImportObservation,
   CollectionImportResponse,
+  CollectionImportResult,
 } from "./collection-import-types";
 
-/** 收藏夹扫描面板，只展示状态、轮次和数量，不展示条目字段。 */
+type CollectionImportHandler =
+  (observation: CollectionImportObservation) => Promise<CollectionImportResponse>;
+type CollectionImageProcessHandler =
+  (observation: CollectionImportObservation, imported: CollectionImportResult, selectedFeedIds?: string[]) => Promise<CollectionImageProcessResponse>;
+
+/** 收藏夹扫描与图片处理面板；选择 identity 始终使用 feed_id。 */
 export function createCollectionPanel(
   document: Document,
   controllerFactory: (onProgress: (count: number, round: number) => void) => CollectionCaptureController,
-  onImport?: (observation: CollectionImportObservation) => Promise<CollectionImportResponse>,
+  onImport?: CollectionImportHandler,
+  onProcess?: CollectionImageProcessHandler,
 ): { toggle(): void; close(): void; getRootForTest(): ShadowRoot } {
   const host = document.createElement("div");
   host.id = "xhs-collection-extension";
   const root = host.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
-  style.textContent = `:host{all:initial}aside{position:fixed;right:20px;top:72px;z-index:2147483647;width:300px;padding:18px;border-radius:14px;background:#fff;color:#222;box-shadow:0 8px 30px #0003;font:14px system-ui,sans-serif}h2{font-size:17px;margin:0 0 14px}p{margin:8px 0;color:#666}button{border:0;border-radius:8px;padding:9px 14px;background:#ff2442;color:#fff;cursor:pointer}button.secondary{margin-left:8px;background:#eee;color:#333}`;
+  style.textContent = `:host{all:initial}aside{position:fixed;right:20px;top:72px;z-index:2147483647;width:340px;max-height:calc(100vh - 100px);overflow:auto;padding:18px;border-radius:14px;background:#fff;color:#222;box-shadow:0 8px 30px #0003;font:14px system-ui,sans-serif}h2{font-size:17px;margin:0 0 14px}p{margin:8px 0;color:#666}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}button{border:0;border-radius:8px;padding:9px 14px;background:#ff2442;color:#fff;cursor:pointer}button.secondary{background:#eee;color:#333}button:disabled{opacity:.55;cursor:default}[data-items]{margin-top:12px;border-top:1px solid #eee}.collection-item{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:10px 0;border-bottom:1px solid #eee}.collection-item label{min-width:0;overflow-wrap:anywhere}.item-status{display:block;margin-top:3px;color:#777;font-size:12px}`;
   root.append(style);
   let panel: HTMLElement | null = null;
   let session: PanelSession | null = null;
+
   const close = (): void => {
     const current = session;
     if (!current) return;
@@ -29,27 +39,65 @@ export function createCollectionPanel(
     session = null;
     panel = null;
   };
+
   const toggle = (): void => {
     if (panel) return close();
     panel = document.createElement("aside");
-    panel.innerHTML = `<h2>小红书旅行收藏夹</h2><p data-status>尚未扫描</p><p data-progress></p><button data-start>扫描当前收藏夹</button><button class="secondary" data-close>关闭</button>`;
+    panel.innerHTML = `<h2>小红书旅行收藏夹</h2><p data-status>尚未扫描</p><p data-progress></p><div class="actions"><button data-start>扫描当前收藏夹</button><button class="secondary" data-process-selected hidden>处理选中</button><button class="secondary" data-process-all hidden>处理全部</button></div><div class="actions"><button class="secondary" data-select-all hidden>全选</button><button class="secondary" data-clear-selection hidden>清空选择</button><button class="secondary" data-close>关闭</button></div><div data-items></div>`;
     root.append(panel);
     const current: PanelSession = {
       panel,
       controller: null,
       closed: false,
       importInFlight: false,
+      processInFlight: false,
       importState: "idle",
+      selectedFeedIds: new Set(),
+      itemFeedIds: [],
+      results: new Map(),
     };
     session = current;
     const status = panel.querySelector<HTMLElement>("[data-status]")!;
     const progress = panel.querySelector<HTMLElement>("[data-progress]")!;
+    const items = panel.querySelector<HTMLElement>("[data-items]")!;
+    const start = panel.querySelector<HTMLButtonElement>("[data-start]")!;
+    const selected = panel.querySelector<HTMLButtonElement>("[data-process-selected]")!;
+    const all = panel.querySelector<HTMLButtonElement>("[data-process-all]")!;
+    const selectAll = panel.querySelector<HTMLButtonElement>("[data-select-all]")!;
+    const clearSelection = panel.querySelector<HTMLButtonElement>("[data-clear-selection]")!;
+
     panel.querySelector("[data-close]")?.addEventListener("click", close);
-    panel.querySelector("[data-start]")?.addEventListener("click", () => {
-      const start = current.panel.querySelector<HTMLButtonElement>("[data-start]");
-      if (!start || current.closed || current.controller || current.importInFlight) return;
+    items.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.dataset.feedId === undefined) return;
+      if (target.checked) current.selectedFeedIds.add(target.dataset.feedId);
+      else current.selectedFeedIds.delete(target.dataset.feedId);
+      updateSelectionButtons(current, selected, all, selectAll, clearSelection);
+    });
+    selectAll.addEventListener("click", () => {
+      current.selectedFeedIds = new Set(current.itemFeedIds);
+      renderItems(current);
+      updateSelectionButtons(current, selected, all, selectAll, clearSelection);
+    });
+    clearSelection.addEventListener("click", () => {
+      current.selectedFeedIds.clear();
+      renderItems(current);
+      updateSelectionButtons(current, selected, all, selectAll, clearSelection);
+    });
+    selected.addEventListener("click", () => {
+      if (!current.selectedFeedIds.size) {
+        status.textContent = "请先选择至少一条收藏";
+        return;
+      }
+      void processSelection(current, status, progress, selected, all, [...current.selectedFeedIds], onProcess);
+    });
+    all.addEventListener("click", () => {
+      void processSelection(current, status, progress, selected, all, undefined, onProcess);
+    });
+    start.addEventListener("click", () => {
+      if (current.closed || current.controller || current.importInFlight || current.processInFlight) return;
       if (current.observation && current.importState === "retryable" && onImport) {
-        void submitImport(current, start, status, progress, current.observation, onImport);
+        void submitImport(current, start, status, progress, selected, all, selectAll, clearSelection, onImport);
         return;
       }
       start.disabled = true;
@@ -69,9 +117,13 @@ export function createCollectionPanel(
             return;
           }
           try {
-            const observation = createCollectionImportObservation(result);
-            current.observation = observation;
-            void submitImport(current, start, status, progress, observation, onImport);
+            current.observation = createCollectionImportObservation(result);
+            current.importState = "idle";
+            current.itemFeedIds = current.observation.payload.items.map((item) => item.feed_id);
+            current.selectedFeedIds.clear();
+            current.results.clear();
+            renderItems(current);
+            void submitImport(current, start, status, progress, selected, all, selectAll, clearSelection, onImport);
           } catch (error) {
             current.importState = "terminal";
             start.disabled = false;
@@ -93,8 +145,13 @@ interface PanelSession {
   controller: CollectionCaptureController | null;
   closed: boolean;
   observation?: CollectionImportObservation;
+  imported?: CollectionImportResult;
   importInFlight: boolean;
+  processInFlight: boolean;
   importState: "idle" | "retryable" | "terminal" | "saved";
+  selectedFeedIds: Set<string>;
+  itemFeedIds: string[];
+  results: Map<string, CollectionImageItemResult>;
 }
 
 function renderScanResult(status: HTMLElement, progress: HTMLElement, start: HTMLButtonElement, result: CollectionCaptureResult): void {
@@ -103,8 +160,6 @@ function renderScanResult(status: HTMLElement, progress: HTMLElement, start: HTM
   if (result.status === "success") {
     status.textContent = `扫描完成，共发现 ${result.uniqueCount} 条唯一笔记`;
     progress.textContent = "本阶段结果尚未保存到本地服务";
-  } else if (result.status === "cancelled") {
-    status.textContent = `扫描未完成：${sanitizeCollectionReason(result.stopReason)}`;
   } else {
     status.textContent = `扫描未完成：${sanitizeCollectionReason(result.stopReason)}`;
   }
@@ -115,42 +170,38 @@ async function submitImport(
   start: HTMLButtonElement,
   status: HTMLElement,
   progress: HTMLElement,
-  observation: CollectionImportObservation,
-  onImport: (observation: CollectionImportObservation) => Promise<CollectionImportResponse>,
+  selected: HTMLButtonElement,
+  all: HTMLButtonElement,
+  selectAll: HTMLButtonElement,
+  clearSelection: HTMLButtonElement,
+  onImport: CollectionImportHandler,
 ): Promise<void> {
+  if (!current.observation) return;
   current.importInFlight = true;
   start.disabled = true;
+  selected.disabled = true;
+  all.disabled = true;
   start.textContent = "保存中";
   status.textContent = "正在保存到本地服务";
   try {
-    const response = await onImport(observation);
+    const response = await onImport(current.observation);
     if (current.closed) return;
     current.importInFlight = false;
-    start.disabled = false;
     if (response.ok && response.result) {
       current.importState = "saved";
+      current.imported = response.result;
+      start.disabled = false;
       start.textContent = "重新扫描";
-      if (response.processing) {
-        const processing = response.processing;
-        const deferred = processing.items.filter((item) => item.video_deferred).length;
-        const failed = processing.items.reduce((total, item) => total + item.failure_count, 0);
-        status.textContent = "已保存并完成图片处理";
-        progress.textContent = `已处理 ${processing.items.length} 条，成功 ${processing.items.reduce((total, item) => total + item.success_count, 0)} 张${failed ? `，失败 ${failed} 张` : ""}${deferred ? `，视频 ${deferred} 条待处理` : ""}`;
-      } else {
-        status.textContent = "已保存到本地服务";
-        progress.textContent = `已保存 ${response.result.item_count} 条`;
-      }
-    } else if (response.kind === "network" || response.kind === "server") {
-      current.importState = "retryable";
-      start.textContent = "重试保存";
-      status.textContent = response.message;
-      progress.textContent = "本次扫描结果仍可重试保存";
-    } else {
-      current.importState = "terminal";
-      start.textContent = "重新扫描";
-      status.textContent = response.message;
-      progress.textContent = "请重新扫描后再试";
+      status.textContent = "已保存，请选择要处理的收藏";
+      progress.textContent = `已保存 ${response.result.item_count} 条`;
+      updateSelectionButtons(current, selected, all, selectAll, clearSelection);
+      return;
     }
+    current.importState = response.kind === "network" || response.kind === "server" ? "retryable" : "terminal";
+    start.disabled = false;
+    start.textContent = current.importState === "retryable" ? "重试保存" : "重新扫描";
+    status.textContent = response.message;
+    progress.textContent = current.importState === "retryable" ? "本次扫描结果仍可重试保存" : "请重新扫描后再试";
   } catch {
     if (current.closed) return;
     current.importInFlight = false;
@@ -160,4 +211,120 @@ async function submitImport(
     status.textContent = "保存失败，请稍后重试";
     progress.textContent = "本次扫描结果仍可重试保存";
   }
+}
+
+async function processSelection(
+  current: PanelSession,
+  status: HTMLElement,
+  progress: HTMLElement,
+  selected: HTMLButtonElement,
+  all: HTMLButtonElement,
+  selectedFeedIds: string[] | undefined,
+  onProcess: CollectionImageProcessHandler | undefined,
+): Promise<void> {
+  if (!onProcess || !current.observation || !current.imported) {
+    status.textContent = "请先保存扫描结果";
+    return;
+  }
+  current.processInFlight = true;
+  selected.disabled = true;
+  all.disabled = true;
+  status.textContent = selectedFeedIds ? "正在处理选中的收藏" : "正在处理全部收藏";
+  progress.textContent = "图片处理中";
+  try {
+    const response = await onProcess(current.observation, current.imported, selectedFeedIds);
+    if (current.closed) return;
+    current.processInFlight = false;
+    if (!response.ok || !response.result) {
+      selected.disabled = false;
+      all.disabled = false;
+      status.textContent = response.message;
+      progress.textContent = "本次处理未完成，可稍后重试";
+      return;
+    }
+    for (const item of response.result.items) current.results.set(item.feed_id, item);
+    renderItems(current);
+    selected.disabled = false;
+    all.disabled = false;
+    status.textContent = response.result.status === "partial" ? "图片处理部分完成" : "图片处理完成";
+    progress.textContent = summarizeResults(current.results.values());
+  } catch {
+    if (current.closed) return;
+    current.processInFlight = false;
+    selected.disabled = false;
+    all.disabled = false;
+    status.textContent = "图片处理失败，请稍后重试";
+    progress.textContent = "本次处理未完成，可稍后重试";
+  }
+}
+
+function renderItems(current: PanelSession): void {
+  const container = current.panel.querySelector<HTMLElement>("[data-items]");
+  if (!container) return;
+  const doc = current.panel.ownerDocument;
+  container.replaceChildren(...current.itemFeedIds.map((feedId) => {
+    const row = doc.createElement("div");
+    row.className = "collection-item";
+    const checkbox = doc.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.dataset.feedId = feedId;
+    checkbox.checked = current.selectedFeedIds.has(feedId);
+    checkbox.setAttribute("aria-label", `选择收藏 ${feedId}`);
+    const label = doc.createElement("label");
+    label.textContent = feedId;
+    const state = doc.createElement("span");
+    state.className = "item-status";
+    state.textContent = itemStatus(current.results.get(feedId));
+    label.append(state);
+    row.append(checkbox, label);
+    return row;
+  }));
+}
+
+function updateSelectionButtons(
+  current: PanelSession,
+  selected: HTMLButtonElement,
+  all: HTMLButtonElement,
+  selectAll: HTMLButtonElement,
+  clearSelection: HTMLButtonElement,
+): void {
+  const hasItems = current.itemFeedIds.length > 0 && current.importState === "saved";
+  selected.hidden = !hasItems;
+  all.hidden = !hasItems;
+  selectAll.hidden = !hasItems;
+  clearSelection.hidden = !hasItems;
+  selected.disabled = !hasItems || current.processInFlight;
+  all.disabled = !hasItems || current.processInFlight;
+  selectAll.disabled = current.selectedFeedIds.size === current.itemFeedIds.length;
+  clearSelection.disabled = current.selectedFeedIds.size === 0;
+}
+
+function itemStatus(item: CollectionImageItemResult | undefined): string {
+  if (!item) return "未处理";
+  if (item.video_deferred) return "视频待处理";
+  if (item.media_status === "media_succeeded") return item.success_count ? `处理成功（${item.success_count} 张图片）` : "处理成功";
+  if (item.media_status === "media_partial") return `部分失败：成功 ${item.success_count} 张，失败 ${item.failure_count} 张`;
+  if (item.media_status === "media_failed" || item.media_status === "enrichment_failed") {
+    return `失败${item.error_code ? `：${safeErrorSummary(item.error_code)}` : ""}`;
+  }
+  return "未处理";
+}
+
+function summarizeResults(items: Iterable<CollectionImageItemResult>): string {
+  const values = [...items];
+  const successfulItems = values.filter((item) => item.success_count > 0).length;
+  const successfulImages = values.reduce((total, item) => total + item.success_count, 0);
+  const failed = values.reduce((total, item) => total + item.failure_count, 0);
+  const deferred = values.filter((item) => item.video_deferred).length;
+  return `成功 ${successfulItems} 条（${successfulImages} 张图片）${failed ? `，失败 ${failed} 张` : ""}${deferred ? `，视频 ${deferred} 条待处理` : ""}`;
+}
+
+function safeErrorSummary(code: string): string {
+  const messages: Record<string, string> = {
+    detail_identity_mismatch: "条目身份校验失败",
+    media_identity_conflict: "媒体结果校验失败",
+    enrichment_pending: "详情尚未准备好",
+    unsupported_work_type: "暂不支持该类型",
+  };
+  return messages[code] ?? "处理失败";
 }
