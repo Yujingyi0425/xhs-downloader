@@ -79,6 +79,10 @@ class VideoProcessingService:
                 continue
             current = await self._videos.get(snapshot_id, membership.feed_id)
             if current and current.status is VideoProcessingStatus.SUCCEEDED:
+                if current.last_error_code is not None:
+                    current = await self._persist(
+                        current.model_copy(update={"last_error_code": None})
+                    )
                 processed.append(current)
                 continue
             if current and current.status in {
@@ -264,6 +268,7 @@ class VideoProcessingService:
                         content.stt_status,
                         content.ocr_status,
                     ),
+                    "last_error_code": None,
                 }
             )
         )
