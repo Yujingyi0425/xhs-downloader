@@ -1,7 +1,7 @@
-import { detectCollectionPage } from "./collection-page-detection";
 import { clearExtensionCredential, ensureExtensionCredential } from "./extension-credential";
 import { registerBrowserExtension } from "./browser-task-service";
 import { processCollectionImages } from "./collection-image-service";
+import { senderMatchesBoard } from "./collection-import-runner";
 import { loadSettings } from "./storage";
 import type {
   CollectionImageProcessMessage,
@@ -38,16 +38,5 @@ export async function handleCollectionImageProcessRequest(
     }
   } catch {
     return { ok: false, message: "图片处理失败，请稍后重试", kind: "network" };
-  }
-}
-
-function senderMatchesBoard(senderUrl: string | undefined, boardId: string): boolean {
-  if (!senderUrl) return false;
-  try {
-    const url = new URL(senderUrl);
-    return url.origin === "https://www.xiaohongshu.com" &&
-      detectCollectionPage(url.pathname).boardId === boardId;
-  } catch {
-    return false;
   }
 }

@@ -153,6 +153,25 @@ describe("TC1C-R1 collection panel lifecycle", () => {
     expect(root.querySelector("[data-status]")?.textContent).toBe("已保存，请选择要处理的收藏");
   });
 
+  it("clears temporary items when page identity validation rejects the import", async () => {
+    const scan = deferred<CollectionCaptureResult>();
+    const onImport = vi.fn(async (): Promise<CollectionImportResponse> => ({
+      ok: false,
+      message: "当前页面不是请求收藏夹",
+      kind: "forbidden",
+    }));
+    const panel = createCollectionPanel(document, () => fakeController(scan.promise, () => undefined), onImport);
+    panel.toggle();
+    const root = panel.getRootForTest();
+    click(root, "[data-start]");
+    scan.resolve(successfulResult());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(root.querySelector("[data-status]")?.textContent).toBe("当前页面不是请求收藏夹");
+    expect(root.querySelectorAll(".collection-item")).toHaveLength(0);
+    expect(root.querySelector<HTMLButtonElement>("[data-process-selected]")?.hidden).toBe(true);
+  });
+
   it("shows image production counts and deferred video state after processing selected items", async () => {
     const scan = deferred<CollectionCaptureResult>();
     const onImport = vi.fn(async (observation: CollectionImportObservation): Promise<CollectionImportResponse> => ({ ok: true, message: "收藏夹已保存", result: { snapshot_id: "s", source_type: "board", board_id: "synthetic-board", board_revision: 1, request_id: observation.requestId, captured_at: "2026-01-01T00:00:00Z", item_count: 1, fingerprint: "f", status: "saved", diff: { added: [], removed: [], retained: [] } } }));

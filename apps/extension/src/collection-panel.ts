@@ -190,6 +190,8 @@ async function submitImport(
     if (response.ok && response.result) {
       current.importState = "saved";
       current.imported = response.result;
+      current.itemFeedIds = current.observation.payload.items.map((item) => item.feed_id);
+      renderItems(current);
       start.disabled = false;
       start.textContent = "重新扫描";
       status.textContent = "已保存，请选择要处理的收藏";
@@ -198,6 +200,7 @@ async function submitImport(
       return;
     }
     current.importState = response.kind === "network" || response.kind === "server" ? "retryable" : "terminal";
+    clearCollectionItems(current);
     start.disabled = false;
     start.textContent = current.importState === "retryable" ? "重试保存" : "重新扫描";
     status.textContent = response.message;
@@ -206,11 +209,19 @@ async function submitImport(
     if (current.closed) return;
     current.importInFlight = false;
     current.importState = "retryable";
+    clearCollectionItems(current);
     start.disabled = false;
     start.textContent = "重试保存";
     status.textContent = "保存失败，请稍后重试";
     progress.textContent = "本次扫描结果仍可重试保存";
   }
+}
+
+function clearCollectionItems(current: PanelSession): void {
+  current.itemFeedIds = [];
+  current.selectedFeedIds.clear();
+  current.results.clear();
+  renderItems(current);
 }
 
 async function processSelection(

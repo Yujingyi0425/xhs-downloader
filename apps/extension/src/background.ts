@@ -10,6 +10,7 @@ import {
 import { handlePublicationRequest, installPublicationAutomation } from "./publication-runner";
 import { handleCollectionImportRequest } from "./collection-import-runner";
 import { handleCollectionImageProcessRequest } from "./collection-image-runner";
+import { pageUrlFromSender } from "./collection-sender";
 import {
   isPublicationRequest,
   type PublicationRequest,
@@ -58,7 +59,7 @@ chrome.runtime.onMessage.addListener(
       response: ExtensionResponse | PublicationResponse | BrowserInteractionResponse | CollectionImportResponse | CollectionImageProcessResponse,
     ) => void,
   ) => {
-    void handleRequest(request, sender.tab?.id, sender.url)
+    void handleRequest(request, sender.tab?.id, pageUrlFromSender(sender))
       .then(sendResponse)
       .catch((error: unknown) =>
         sendResponse({
