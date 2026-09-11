@@ -19,8 +19,8 @@
 
 ## 视频剩余边界
 
-- `VIDEO_ACQUISITION_RUNTIME=BLOCKED_AT_MEDIA_PARSER`：reload 后的 bounded canary 已跨过 detail navigation，浏览器任务成功返回，但页面结果为 `note_type=unknown`、`media_count=0`，未产生可下载视频 locator。
-- 新的最小修复已完成：静态状态无媒体时回读主世界实时状态；Extension 全量测试 461 passed，lint、typecheck、build 均通过。
+- `VIDEO_ACQUISITION_RUNTIME=BLOCKED_AT_MEDIA_PARSER`：最新 reload 后的 bounded canary 已跨过 detail navigation，页面诊断确认初始状态、主容器和详情容器存在，但静态状态与实时状态均未产生可下载视频 locator，最终为 `MEDIA_PARSER_EMPTY`。
+- 静态状态为空时回读主世界实时状态的修复已通过本地测试，但真实页面仍返回空媒体；Extension 全量测试 461 passed，lint、typecheck、build 均通过。
 - `VIDEO_RAW_EXTRACTION_PRODUCT_READY=NO`，需要加载该最新构建后再执行一个 canary，不能将当前失败误报为视频成功。
 
 ## 安全验收

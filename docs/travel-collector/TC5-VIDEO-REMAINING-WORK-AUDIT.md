@@ -3,9 +3,9 @@
 ## 当前状态
 
 - `VIDEO_CURRENT_IMPLEMENTATION_STATUS=IMPLEMENTED_BUT_RUNTIME_BLOCKED`
-- `VIDEO_LAST_PROVEN_RUNTIME_BOUNDARY=GET_FEED_MEDIA_BROWSER_MEDIA_RESULT_EMPTY`
-- `VIDEO_KNOWN_BLOCKERS=浏览器任务已成功但页面媒体解析返回 note_type=unknown、media_count=0；实时状态 fallback 尚未重新 canary 验证`
-- `R4E_CURRENT_STATUS=SOURCE_REPAIR_PASS_MEDIA_PARSER_FALLBACK_RUNTIME_EFFECT_UNPROVEN`
+- `VIDEO_LAST_PROVEN_RUNTIME_BOUNDARY=GET_FEED_MEDIA_BROWSER_MEDIA_PARSER_EMPTY`
+- `VIDEO_KNOWN_BLOCKERS=页面诊断显示 initial_state、main_container、detail_container 均存在，但真实页面视频字段不在当前 parser 可识别形状内；静态与实时状态 fallback 均返回空媒体`
+- `R4E_CURRENT_STATUS=SOURCE_REPAIR_PASS_MEDIA_PARSER_FALLBACK_RUNTIME_EFFECT_FAIL`
 - `VIDEO_PERMISSION_STATUS=SOURCE_HOST_PERMISSION_PRESENT_RUNTIME_ATTESTATION_UNPROVEN`
 - `VIDEO_SECRET_SAFETY_STATUS=PASS_FOR_NEW_PIPELINE; historical failed browser task payloads remain outside new extraction records`
 
@@ -24,8 +24,8 @@
 
 ## 最短 closure 路线
 
-1. 让当前 Chrome 扩展实例加载包含“静态媒体为空时回读主世界实时状态”修复的新构建。
-2. 仅重跑一个代表性视频 canary，确认下载 artifact、PyAV 音频、CPU faster-whisper、关键帧 OCR、canonical extraction persistence 和重启读回。
+1. 针对真实页面状态或 DOM 视频元素补齐 media locator 解析，并先用脱敏结构测试锁定字段形状。
+2. 重新加载扩展后仅重跑一个代表性视频 canary，确认下载 artifact、PyAV 音频、CPU faster-whisper、关键帧 OCR、canonical extraction persistence 和重启读回。
 3. 若单条闭环通过，再按 bounded batch/idempotency 回填视频；若仍失败，只修复新的第一失败边界。
 
 `IMAGE_MVP_MILESTONE_FROZEN=YES`，`TC5_AUTHORIZED=NO`，`TC6_AUTHORIZED=NO`，`VIDEO_ACQUISITION_TRIGGERED=YES_BOUNDED_CANARY_ONLY`，`VIDEO_RAW_EXTRACTION_PRODUCT_READY=NO`。
